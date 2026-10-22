@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Idea board</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%221%22 y=%224%22 width=%226%22 height=%224%22 rx=%221%22 fill=%22%2316a34a%22/%3E%3Crect x=%229%22 y=%228%22 width=%226%22 height=%224%22 rx=%221%22 fill=%22%23c2410c%22/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <input id="board-title" class="board-title" aria-label="Board title" spellcheck="false" />
+    <div class="toolbar">
+      <button id="brief-toggle" title="What we're building: free-form notes Claude reads first">Brief</button>
+      <button id="add-node" class="primary" title="Add an idea (or double-click the board)">+ Idea</button>
+      <button id="tidy" title="Arrange cards left to right by how they connect">Tidy</button>
+      <button id="fit" title="Fit everything on screen (F)">Fit</button>
+      <label class="toggle"><input type="checkbox" id="hide-rejected" /> Hide rejected</label>
+      <span class="save-status" id="save-status">All changes saved</span>
+      <span class="counts" id="counts"></span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section id="viewport" class="viewport" aria-label="Whiteboard">
+      <div id="world" class="world">
+        <svg id="edges" class="edges" aria-hidden="true">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" />
+            </marker>
+            <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" />
+            </marker>
+          </defs>
+          <g id="edge-layer" transform="translate(50000 50000)"></g>
+        </svg>
+        <div id="nodes"></div>
+      </div>
+      <div id="empty" class="empty" hidden>
+        <strong>Empty board</strong>
+        <span>Double-click anywhere to add an idea, or ask Claude in the chat below.</span>
+      </div>
+    </section>
+
+    <aside id="panel" class="panel" hidden></aside>
+  </main>
+
+  <footer class="chat">
+    <div class="chat-head">
+      <button id="chat-toggle" class="link" aria-expanded="true">Chat</button>
+      <span id="agent-status" class="agent-status"></span>
+    </div>
+    <div id="chat-log" class="chat-log" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form">
+      <textarea id="chat-input" rows="1" placeholder="Ask Claude to add, connect or rework ideas… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button type="submit" class="primary">Send</button>
+    </form>
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
