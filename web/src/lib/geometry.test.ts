@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { curve, fitView, flowAnchors, linkPath, toWorld, zoomAt, type Rect, type View } from './geometry';
+import { curve, fitView, flowAnchors, freeSpot, linkPath, toWorld, zoomAt, type Rect, type View } from './geometry';
 
 test('zoomAt keeps the point under the cursor fixed', () => {
   const view: View = { x: 40, y: -25, k: 1.3 };
@@ -110,4 +110,45 @@ test('linkPath survives two rects with the same centre', () => {
   const { d, mid } = linkPath(r, r);
   expect(d).not.toContain('NaN');
   expect(Number.isFinite(mid.x)).toBe(true);
+});
+
+const overlaps = (a: Rect, b: Rect): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+test('freeSpot keeps the wanted spot when nothing is there', () => {
+  const want = { x: 0, y: 0, w: 200, h: 100 };
+  expect(freeSpot(want, [])).toEqual({ x: 0, y: 0 });
+  expect(freeSpot(want, [{ x: 400, y: 0, w: 100, h: 100 }])).toEqual({ x: 0, y: 0 });
+});
+
+test('freeSpot moves off an object to the nearest free spot, with a gap', () => {
+  const want = { x: 0, y: 0, w: 240, h: 220 };
+  const taken = { x: 0, y: 0, w: 240, h: 220 };
+  const spot = freeSpot(want, [taken]);
+  const placed = { ...spot, w: want.w, h: want.h };
+  expect(overlaps(placed, { x: taken.x - 16, y: taken.y - 16, w: taken.w + 32, h: taken.h + 32 })).toBe(false);
+  // Nearest: one move to the side, not a long way off.
+  expect(Math.hypot(spot.x, spot.y)).toBeLessThanOrEqual(240 + 16 + 40);
+});
+
+test('freeSpot never stacks a second picture on the first one', () => {
+  const size = { w: 240, h: 220 };
+  const first = freeSpot({ x: 0, y: 0, ...size }, []);
+  const second = freeSpot({ x: 0, y: 0, ...size }, [{ ...first, ...size }]);
+  const third = freeSpot({ x: 0, y: 0, ...size }, [{ ...first, ...size }, { ...second, ...size }]);
+  expect(overlaps({ ...second, ...size }, { ...first, ...size })).toBe(false);
+  expect(overlaps({ ...third, ...size }, { ...first, ...size })).toBe(false);
+  expect(overlaps({ ...third, ...size }, { ...second, ...size })).toBe(false);
+});
+
+test('freeSpot finds a gap between objects when there is one', () => {
+  // A ring of boxes with a hole in the middle big enough for the new one.
+  const around = [
+    { x: -300, y: -300, w: 600, h: 200 },
+    { x: -300, y: 100, w: 600, h: 200 },
+    { x: -300, y: -100, w: 150, h: 200 },
+    { x: 150, y: -100, w: 150, h: 200 },
+  ];
+  expect(freeSpot({ x: -40, y: -60, w: 80, h: 60 }, around)).toEqual({ x: -40, y: -60 });
+  const spot = freeSpot({ x: -300, y: -100, w: 80, h: 60 }, around);
+  for (const r of around) expect(overlaps({ ...spot, w: 80, h: 60 }, r)).toBe(false);
 });

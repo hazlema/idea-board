@@ -12,7 +12,7 @@
   import type { DragOptions, ResizeOptions } from '$lib/actions';
   import * as api from '$lib/api';
   import { firstLine } from '$lib/format';
-  import { linkPath, toWorld, type Point, type Rect, type View } from '$lib/geometry';
+  import { freeSpot, linkPath, toWorld, type Point, type Rect, type View } from '$lib/geometry';
   import { live } from '$lib/live.svelte';
   import { pastedImage, pastedUrl } from '$lib/pictures';
   import { objectLabel, type Board, type BObject, type Group } from '$lib/types';
@@ -24,11 +24,10 @@
   const MAIN_PAGE = 'p_main';
   const DEFAULT_VIEW: View = { x: 80, y: 80, k: 1 };
   const MIN: Record<'group' | 'note' | 'picture', Size> = { group: { w: 220, h: 80 }, note: { w: 160, h: 80 }, picture: { w: 120, h: 80 } };
-  // Roughly how big a new object is, to centre it in the view.
+  // Roughly how big a new object is, to place it in the view.
   const NEW_SIZE: Record<BObject['kind'], Size> = { group: { w: 320, h: 120 }, note: { w: 220, h: 140 }, topic: { w: 130, h: 48 }, picture: { w: 240, h: 220 } };
   // Stand-in size for links until a box has been measured.
   const UNMEASURED = 160;
-  const DROP_STEP = 24;
   const UNTITLED: Record<BObject['kind'], string> = { group: 'Untitled group', note: 'Note', picture: 'picture', topic: 'Topic' };
   const PICTURE_TYPES = 'image/png,image/jpeg,image/gif,image/webp';
 
@@ -57,6 +56,8 @@
   let focusNew = $state<string | null>(null);
   // Something just created: it is selected once the board update that holds it arrives.
   let arriving: string | null = null;
+  // Spots given to new objects that the board does not show yet, so two at once don't overlap.
+  let reserved: Rect[] = [];
 
   const shownBoard = $derived(board ?? live.board);
   const page = $derived(shownBoard?.brainstorm.pages.find((p) => p.id === MAIN_PAGE) ?? shownBoard?.brainstorm.pages[0]);
@@ -177,21 +178,39 @@
 
   // ---- adding ----
 
-  function centre(size: Size): Point {
-    const { width, height } = canvas?.size() ?? { width: 0, height: 0 };
-    const middle = toWorld(view, width / 2, height / 2);
-    const jitter = () => Math.random() * 40 - 20;
-    return { x: Math.round(middle.x - size.w / 2 + jitter()), y: Math.round(middle.y - size.h / 2 + jitter()) };
+  /**
+   * Where a new object goes: centred in the view (or with its corner at
+   * `corner`) if that spot is free, else the nearest free spot. The spot is
+   * held until `release` is called with it.
+   */
+  function place(size: Size, corner?: Point): Rect {
+    let want = corner;
+    if (!want) {
+      const { width, height } = canvas?.size() ?? { width: 0, height: 0 };
+      const middle = toWorld(view, width / 2, height / 2);
+      want = { x: middle.x - size.w / 2, y: middle.y - size.h / 2 };
+    }
+    const spot = freeSpot({ x: Math.round(want.x), y: Math.round(want.y), ...size }, [...objects.map(rectOf), ...reserved]);
+    const rect = { ...spot, ...size };
+    reserved = [...reserved, rect];
+    return rect;
+  }
+
+  function release(rect: Rect): void {
+    reserved = reserved.filter((r) => r !== rect);
   }
 
   async function addObject(kind: NewKind): Promise<void> {
     const body = kind === 'group' ? { title: 'New group' } : kind === 'topic' ? { text: 'New topic' } : { text: '' };
-    const result = (await live.send({ type: 'addObject', kind, ...centre(NEW_SIZE[kind]), ...body })) as { object?: BObject } | null;
+    const spot = place(NEW_SIZE[kind]);
+    const result = (await live.send({ type: 'addObject', kind, x: spot.x, y: spot.y, ...body })) as { object?: BObject } | null;
+    release(spot);
     if (!result?.object) return;
     selectNew({ kind: 'object', id: result.object.id });
     focusNew = result.object.id;
   }
 
+  /** Adds a picture; `at` is where the user dropped it (else it goes in the middle of the view). */
   async function addPicture(source: Blob | string, at?: Point): Promise<void> {
     let asset: string;
     try {
@@ -200,8 +219,9 @@
       live.toast(error instanceof Error ? error.message : 'Could not add the picture');
       return;
     }
-    const p = at ?? centre(NEW_SIZE.picture);
-    const result = (await live.send({ type: 'addObject', kind: 'picture', asset, x: p.x, y: p.y })) as { object?: BObject } | null;
+    const spot = place(NEW_SIZE.picture, at);
+    const result = (await live.send({ type: 'addObject', kind: 'picture', asset, x: spot.x, y: spot.y })) as { object?: BObject } | null;
+    release(spot);
     if (!result?.object) return;
     selectNew({ kind: 'object', id: result.object.id });
     // A pasted or dropped file is at hand; a picture from a URL gets its preview when it first shows.
@@ -211,10 +231,7 @@
   function pickedFiles(event: Event & { currentTarget: HTMLInputElement }): void {
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = '';
-    files.forEach((file, i) => {
-      const p = centre(NEW_SIZE.picture);
-      void addPicture(file, { x: p.x + i * DROP_STEP, y: p.y + i * DROP_STEP });
-    });
+    for (const file of files) void addPicture(file);
   }
 
   const typingIn = (target: EventTarget | null): boolean =>
@@ -244,7 +261,7 @@
       return;
     }
     const at = canvas.worldAt(event.clientX, event.clientY);
-    files.forEach((file, i) => void addPicture(file, { x: Math.round(at.x) + i * DROP_STEP, y: Math.round(at.y) + i * DROP_STEP }));
+    for (const file of files) void addPicture(file, at);
   }
 
   // ---- linking ----

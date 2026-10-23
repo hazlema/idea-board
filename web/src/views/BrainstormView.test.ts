@@ -222,6 +222,44 @@ test('a pasted image is uploaded, added, and given a preview', async () => {
   expect(api.op).toHaveBeenCalledWith({ type: 'addObject', kind: 'picture', asset: ASSET, x: -200, y: -190 });
 });
 
+test('a new picture moves off whatever is in the middle of the view, and a second one does not land on the first', async () => {
+  // Something sits exactly where a new picture would go (jsdom's middle of the view is world (-80, -80)).
+  live.board = boardWith([note('o_mid', 'In the way', { x: -200, y: -190, w: 240, h: 220 })]);
+  vi.mocked(api.uploadPicture).mockResolvedValue(ASSET);
+  let n = 0;
+  vi.mocked(api.op).mockImplementation(async (o) => {
+    if (o.type !== 'addObject') return {};
+    const added = picture(`o_pic${++n}`, { x: o.x as number, y: o.y as number, w: 240, h: 220 });
+    live.board = boardWith([...(live.board?.brainstorm.pages[0].objects ?? []), added]);
+    return { object: added };
+  });
+  render(BrainstormView);
+  const rects = () => (live.board?.brainstorm.pages[0].objects ?? []).map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
+  const overlap = (a: { x: number; y: number; w: number; h: number }, b: typeof a) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+  for (const name of ['one.png', 'two.png']) {
+    window.dispatchEvent(pasteEvent({ file: new File(['png'], name, { type: 'image/png' }) }));
+    await waitFor(() => expect(rects().length).toBe(name === 'one.png' ? 2 : 3));
+  }
+  const [mid, first, second] = rects();
+  expect(overlap(first, mid)).toBe(false);
+  expect(overlap(second, mid)).toBe(false);
+  expect(overlap(second, first)).toBe(false);
+});
+
+test('several pictures picked at once are spread out, not stacked', async () => {
+  vi.mocked(api.uploadPicture).mockResolvedValue(ASSET);
+  render(BrainstormView);
+  const picker = document.querySelector('input[type="file"]') as HTMLInputElement;
+  const files = ['a.png', 'b.png', 'c.png'].map((name) => new File(['png'], name, { type: 'image/png' }));
+  Object.defineProperty(picker, 'files', { value: files, configurable: true });
+  await fireEvent.change(picker);
+  await waitFor(() => expect(vi.mocked(api.op).mock.calls.filter(([o]) => o.type === 'addObject')).toHaveLength(3));
+  const spots = vi.mocked(api.op).mock.calls.map(([o]) => o).filter((o) => o.type === 'addObject').map((o) => ({ x: o.x as number, y: o.y as number, w: 240, h: 220 }));
+  const overlap = (a: (typeof spots)[0], b: (typeof spots)[0]) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  expect(overlap(spots[0], spots[1]) || overlap(spots[0], spots[2]) || overlap(spots[1], spots[2])).toBe(false);
+});
+
 test('a pasted image URL is fetched by the server; its error shows in a toast', async () => {
   vi.mocked(api.ingestUrl).mockRejectedValue(new Error('That address is not a picture'));
   render(BrainstormView);

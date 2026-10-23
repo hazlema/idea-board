@@ -97,3 +97,35 @@ export function linkPath(a: Rect, b: Rect): Curve {
   const mid = { x: (s.x + 2 * control.x + t.x) / 4, y: (s.y + 2 * control.y + t.y) / 4 };
   return { d: `M${s.x},${s.y} Q${control.x},${control.y} ${t.x},${t.y}`, mid };
 }
+
+const PLACE_STEP = 40;
+const PLACE_GAP = 16;
+const PLACE_RINGS = 60;
+// Grid offsets around the wanted spot, nearest first (built on first use).
+let placeOffsets: Point[] | null = null;
+
+function offsetsByDistance(): Point[] {
+  if (placeOffsets) return placeOffsets;
+  const out: Point[] = [];
+  for (let i = -PLACE_RINGS; i <= PLACE_RINGS; i += 1) {
+    for (let j = -PLACE_RINGS; j <= PLACE_RINGS; j += 1) out.push({ x: i * PLACE_STEP, y: j * PLACE_STEP });
+  }
+  placeOffsets = out.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+  return placeOffsets;
+}
+
+/**
+ * Where to put a new box: `want` itself if it overlaps none of `taken` (with a
+ * small gap), else the nearest free spot on a grid around it. Falls back to
+ * `want` when everything nearby is full.
+ */
+export function freeSpot(want: Rect, taken: Rect[]): Point {
+  const blocked = (x: number, y: number): boolean =>
+    taken.some((r) => x - PLACE_GAP < r.x + r.w && r.x - PLACE_GAP < x + want.w && y - PLACE_GAP < r.y + r.h && r.y - PLACE_GAP < y + want.h);
+  for (const offset of offsetsByDistance()) {
+    const x = want.x + offset.x;
+    const y = want.y + offset.y;
+    if (!blocked(x, y)) return { x, y };
+  }
+  return { x: want.x, y: want.y };
+}
