@@ -2,7 +2,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import * as api from './api';
 import type { AgentState, Board, Op, Pointer } from './types';
 
-export type View = 'brief' | 'brainstorm' | 'flowchart';
+export type View = 'brief' | 'brainstorm' | 'flowchart' | 'collaborate';
 export interface Notice {
   at: string;
   text: string;
@@ -13,7 +13,7 @@ export interface Toast {
 }
 
 const VIEW_KEY = 'idea-board-tab';
-const VIEWS: View[] = ['brief', 'brainstorm', 'flowchart'];
+const VIEWS: View[] = ['brief', 'brainstorm', 'flowchart', 'collaborate'];
 const FLASH_MS = 1600;
 const TOAST_MS = 6000;
 /** How often fields whose save failed try again. */

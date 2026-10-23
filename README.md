@@ -67,11 +67,17 @@ The top bar shows "All changes saved". If a save fails (the server stopped,
 say), what you typed stays on screen, the top bar says "Not saved", and it is
 tried again every few seconds until it goes through.
 
-Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**. The chat bar
-stays at the bottom on every tab; its **Chat** toggle hides the messages and
-leaves just the input row. The side panel shows **Memory** (tabs
-**Ruled out** and **History**); on Flowchart, selecting a card shows its
-details there instead.
+Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**, **Collaborate**.
+The side panel shows **Memory** (tabs **Ruled out** and **History**); on
+Flowchart, selecting a card shows its details there instead.
+
+### Collaborate
+
+The chat with Claude, on a page of its own. The slider in its header sets the
+chat's text size. **⧉ Pop out** floats the chat over the other tabs, so you can
+watch the board change while you talk: drag it by its title bar, resize it from
+the corner, and close it with **✕** to put it back in the tab. The text size and
+where you left the window are remembered in this browser.
 
 ### Brief
 
@@ -86,7 +92,8 @@ A pannable, zoomable dotted canvas. Add things from the palette on the left:
 - **Group:** a titled box of entries. Each entry has a bold label and
   multi-line text. A plain bullet is a note or fact; add a checkbox from the
   entry menu to make it a decision: **ticked = agreed**, **unticked =
-  undecided**. Click **+ add item** to add entries; drag the handle to
+  undecided**. Click **+ add item** to add entries (type `:` or press Enter after the label
+  to move on to its text); drag the handle to
   reorder them or move them to another group.
 - **Note:** a sticky note with free text.
 - **Topic:** a round hub bubble that groups and notes can be linked to.
@@ -97,7 +104,7 @@ A pannable, zoomable dotted canvas. Add things from the palette on the left:
 
 Drag an object by its title bar, resize from the corner, drag the background
 to pan, scroll to zoom. Boxes grow to fit their content. Select an object or
-entry and the chat bar shows **Talking about: &lt;name&gt; ×**: your next message
+entry and the chat shows **Talking about: &lt;name&gt; ×**: your next message
 tells Claude exactly what you are pointing at.
 
 Things Claude adds here are dashed and marked **Claude added**, with **Keep**

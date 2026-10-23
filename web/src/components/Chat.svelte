@@ -1,10 +1,18 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
+  import { CHAT_FONT, chatPrefs } from '$lib/chatPrefs.svelte';
   import { live } from '$lib/live.svelte';
   import type { ChatMessage, Pointer } from '$lib/types';
   import { preview } from '../memory/preview.svelte';
 
+  interface Props {
+    /** Buttons at the right of the header (Pop out, or the window's own). */
+    controls?: Snippet;
+  }
+
+  let { controls }: Props = $props();
+
   const MAX_LABEL = 200;
-  const COLLAPSED_KEY = 'idea-board-chat-collapsed';
   const PLACEHOLDER = "Tell Claude what you're thinking… (Enter to send, Shift+Enter for a new line)";
 
   // Chat would change the live board, so it waits while an old version is being looked at.
@@ -12,26 +20,6 @@
 
   let draft = $state('');
   let log: HTMLDivElement | undefined = $state();
-  // Collapsed shows only the input row, so the canvas gets the room back. Remembered across visits.
-  let collapsed = $state(savedCollapsed());
-
-  function savedCollapsed(): boolean {
-    try {
-      return localStorage.getItem(COLLAPSED_KEY) === '1';
-    } catch {
-      return false;
-    }
-  }
-
-  function toggleCollapsed(): void {
-    collapsed = !collapsed;
-    try {
-      if (collapsed) localStorage.setItem(COLLAPSED_KEY, '1');
-      else localStorage.removeItem(COLLAPSED_KEY);
-    } catch {
-      // Private mode: the choice just won't be remembered.
-    }
-  }
 
   type Item = { at: string; key: string; message?: ChatMessage; notice?: string };
 
@@ -49,10 +37,10 @@
     return '';
   });
 
-  // Keep the newest message in view (also when the list is opened again).
+  // Keep the newest message in view (also when the text size changes).
   $effect(() => {
     void items.length;
-    void collapsed;
+    void chatPrefs.fontSize;
     if (log) log.scrollTop = log.scrollHeight;
   });
 
@@ -79,31 +67,40 @@
   }
 </script>
 
-<section class="flex flex-col border-t border-line bg-panel" aria-label="Chat with Claude">
-  <div class="flex h-7 items-center gap-3 px-4 pt-1 text-xs">
-    <button
-      type="button"
-      class="font-medium text-muted hover:text-text"
-      aria-expanded={!collapsed}
-      aria-controls="chat-log"
-      title={collapsed ? 'Show the chat messages' : 'Hide the chat messages'}
-      onclick={toggleCollapsed}>{collapsed ? '▸' : '▾'} Chat</button>
-    <span class={live.agent === 'working' ? 'text-claude' : 'text-muted'} aria-live="polite">{status}</span>
+<!-- Sizes inside are in em, so the text-size slider scales all of it. -->
+<section class="flex min-h-0 flex-1 flex-col" style:font-size="{chatPrefs.fontSize}px" aria-label="Chat with Claude">
+  <div class="flex items-center gap-3 border-b border-line px-4 py-1.5 text-[0.8em]">
+    <span class="min-w-0 flex-1 truncate {live.agent === 'working' ? 'text-claude' : 'text-muted'}" aria-live="polite">{status}</span>
+    <label class="flex shrink-0 items-center gap-2 text-muted" title="Chat text size">
+      <span aria-hidden="true" class="text-[0.85em]">A</span>
+      <input
+        type="range"
+        class="w-24 accent-accent"
+        aria-label="Chat text size"
+        min={CHAT_FONT.min}
+        max={CHAT_FONT.max}
+        step="1"
+        value={chatPrefs.fontSize}
+        oninput={(e) => (chatPrefs.fontSize = Number(e.currentTarget.value))}
+      />
+      <span aria-hidden="true" class="text-[1.3em]">A</span>
+    </label>
+    {@render controls?.()}
   </div>
 
-  <div bind:this={log} id="chat-log" hidden={collapsed} class="flex max-h-48 min-h-0 flex-col gap-2 overflow-y-auto px-4 py-2">
+  <div bind:this={log} class="flex min-h-0 flex-1 flex-col gap-[0.6em] overflow-y-auto px-4 py-3 leading-normal">
     {#each items as item (item.key)}
       {#if item.message}
         {@const message = item.message}
-        <div class="max-w-[80ch] rounded-md px-3 py-1.5 {message.role === 'claude' ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
-          <div class="text-xs font-medium {message.role === 'claude' ? 'text-claude' : 'text-accent'}">{message.role === 'claude' ? 'Claude' : 'You'}</div>
-          <div class="whitespace-pre-wrap break-words">{message.text}</div>
+        <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {message.role === 'claude' ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
+          <div class="text-[0.8em] font-medium {message.role === 'claude' ? 'text-claude' : 'text-accent'}">{message.role === 'claude' ? 'Claude' : 'You'}</div>
+          <div class="break-words whitespace-pre-wrap">{message.text}</div>
           {#if message.context?.length}
-            <div class="mt-1 text-xs text-muted">About: {message.context.map((c) => c.label).join(', ')}</div>
+            <div class="mt-1 text-[0.8em] text-muted">About: {message.context.map((c) => c.label).join(', ')}</div>
           {/if}
         </div>
       {:else}
-        <div class="self-center text-xs text-muted">{item.notice}</div>
+        <div class="self-center text-[0.8em] text-muted">{item.notice}</div>
       {/if}
     {:else}
       <div class="text-muted">Tell Claude what you are thinking about. It can read and change the board.</div>
@@ -113,7 +110,7 @@
   <div class="flex flex-col gap-1.5 px-4 pt-1 pb-3">
     {#if live.pointing}
       {@const pointing = live.pointing}
-      <div class="flex w-fit max-w-full items-center gap-1.5 rounded-full border border-line bg-raised px-2.5 py-0.5 text-xs">
+      <div class="flex w-fit max-w-full items-center gap-1.5 rounded-full border border-line bg-raised px-2.5 py-0.5 text-[0.8em]">
         <span class="text-muted">Talking about:</span>
         <span class="truncate font-medium">{pointing.label}</span>
         <button class="text-muted hover:text-text" aria-label="Stop talking about {pointing.label}" onclick={() => (live.pointing = null)}>×</button>

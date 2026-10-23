@@ -6,6 +6,7 @@
     { view: 'brief', label: 'Brief' },
     { view: 'brainstorm', label: 'Brainstorm' },
     { view: 'flowchart', label: 'Flowchart' },
+    { view: 'collaborate', label: 'Collaborate' },
   ];
 
   let menuOpen = $state(false);

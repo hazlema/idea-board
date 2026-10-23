@@ -6,7 +6,8 @@ vi.mock('$lib/api', () => ({ op: vi.fn().mockResolvedValue({}) }));
 
 import * as api from '$lib/api';
 import { live } from '$lib/live.svelte';
-import ChatDock from './ChatDock.svelte';
+import Chat from './Chat.svelte';
+import { chatPrefs } from '$lib/chatPrefs.svelte';
 import { preview } from '../memory/preview.svelte';
 import type { VersionMeta } from '$lib/types';
 
@@ -28,7 +29,7 @@ async function typeAndSend(text: string) {
 
 test('the pointing chip shows and its context is sent with the message', async () => {
   live.pointing = { kind: 'object', id: 'g_1', label: 'Wizards' };
-  render(ChatDock);
+  render(Chat);
   expect(screen.getByText('Talking about:')).toBeInTheDocument();
   expect(screen.getByText('Wizards')).toBeInTheDocument();
 
@@ -45,7 +46,7 @@ test('the pointing chip shows and its context is sent with the message', async (
 
 test('the chip clears the pointer and later messages carry no context', async () => {
   live.pointing = { kind: 'node', id: 'n_1', label: 'Combat' };
-  render(ChatDock);
+  render(Chat);
   await fireEvent.click(screen.getByRole('button', { name: 'Stop talking about Combat' }));
   expect(live.pointing).toBeNull();
   expect(screen.queryByText('Talking about:')).not.toBeInTheDocument();
@@ -55,7 +56,7 @@ test('the chip clears the pointer and later messages carry no context', async ()
 });
 
 test('Shift+Enter does not send', async () => {
-  render(ChatDock);
+  render(Chat);
   const input = screen.getByPlaceholderText(/tell claude/i);
   await fireEvent.input(input, { target: { value: 'line one' } });
   await fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
@@ -64,7 +65,7 @@ test('Shift+Enter does not send', async () => {
 
 test('a long pointer label is cut to the 200 characters the server accepts', async () => {
   live.pointing = { kind: 'object', id: 'g_1', label: 'x'.repeat(300) };
-  render(ChatDock);
+  render(Chat);
   await typeAndSend('hi');
   await waitFor(() => expect(api.op).toHaveBeenCalled());
   const sent = vi.mocked(api.op).mock.calls[0][0] as unknown as { context: { label: string }[] };
@@ -79,7 +80,7 @@ test('messages show who said them, and the agent status line follows the agent',
   ];
   live.board = board;
   live.agent = 'working';
-  render(ChatDock);
+  render(Chat);
   expect(screen.getByText('You')).toBeInTheDocument();
   expect(screen.getByText('Claude')).toBeInTheDocument();
   expect(screen.getByText('Wizards could be a class.')).toBeInTheDocument();
@@ -89,7 +90,7 @@ test('messages show who said them, and the agent status line follows the agent',
 test('chat waits while a version is being previewed', async () => {
   const meta: VersionMeta = { id: 'v_1', name: 'Old', at: '', author: 'user', auto: false, stats: { groups: 0, entries: 0, notes: 0, pictures: 0, cards: 0 } };
   preview.current = { meta, content: emptyBoard() };
-  render(ChatDock);
+  render(Chat);
 
   const input = screen.getByPlaceholderText('Close the preview to chat');
   expect(input).toBeDisabled();
@@ -103,25 +104,13 @@ test('chat waits while a version is being previewed', async () => {
   await waitFor(() => expect(api.op).toHaveBeenCalledWith({ type: 'chat', text: 'hello', context: undefined }));
 });
 
-test('the Chat toggle hides the messages, keeps the input, and is remembered', async () => {
-  live.board = emptyBoard();
-  live.board.chat = [{ id: 'm_1', role: 'user', text: 'What about wizards?', at: '2026-10-22T10:00:00.000Z', handled: true }];
-  const first = render(ChatDock);
-  const toggle = screen.getByRole('button', { name: /Chat/ });
-  expect(toggle).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByText('What about wizards?')).toBeVisible();
+test('the text size slider sizes the chat and is remembered', async () => {
+  chatPrefs.fontSize = 17;
+  render(Chat);
+  const chat = screen.getByRole('region', { name: 'Chat with Claude' });
+  expect(chat.style.fontSize).toBe('17px');
 
-  await fireEvent.click(toggle);
-  expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByText('What about wizards?')).not.toBeVisible();
-  expect(screen.getByPlaceholderText(/tell claude/i)).toBeVisible();
-
-  first.unmount();
-  render(ChatDock);
-  const again = screen.getByRole('button', { name: /Chat/ });
-  expect(again).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByText('What about wizards?')).not.toBeVisible();
-  await fireEvent.click(again);
-  expect(screen.getByText('What about wizards?')).toBeVisible();
-  expect(localStorage.getItem('idea-board-chat-collapsed')).toBeNull();
+  await fireEvent.input(screen.getByRole('slider', { name: 'Chat text size' }), { target: { value: '24' } });
+  expect(chat.style.fontSize).toBe('24px');
+  expect(JSON.parse(localStorage.getItem('idea-board-chat') ?? '{}').fontSize).toBe(24);
 });
