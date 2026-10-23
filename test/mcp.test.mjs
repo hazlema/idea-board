@@ -44,13 +44,17 @@ test('view_board shows memory first and brainstorm content', () => withServer(as
   assert.equal(view.ruled_out[0].from, 'user');
   assert.deepEqual(Object.keys(view.brainstorm), ['groups', 'notes', 'pictures', 'topics', 'links']);
   const [g] = view.brainstorm.groups;
-  assert.deepEqual(Object.keys(g), ['id', 'title', 'color', 'claude_added', 'x', 'y', 'entries', 'ruled_out_entries']);
+  assert.deepEqual(Object.keys(g), ['id', 'title', 'color', 'claude_added', 'x', 'y', 'w', 'h', 'entries', 'ruled_out_entries']);
   assert.deepEqual(g.entries.map((e) => e.label), ['Staves']);
   assert.deepEqual(Object.keys(g.entries[0]), ['id', 'label', 'text', 'check', 'claude_added']);
   assert.equal(g.entries[0].check, 'done');
   assert.deepEqual(g.ruled_out_entries, [{ id: fireballs.id, label: 'Fireballs' }]);
   assert.equal(view.brainstorm.notes[0].text, 'a note');
+  assert.deepEqual(Object.keys(view.brainstorm.notes[0]), ['id', 'text', 'claude_added', 'x', 'y', 'w', 'h']);
+  assert.deepEqual([view.brainstorm.notes[0].x, view.brainstorm.notes[0].y], [900, 0]);
   assert.equal(view.brainstorm.topics[0].text, 'Magic system');
+  assert.deepEqual(Object.keys(view.brainstorm.topics[0]), ['id', 'text', 'x', 'y', 'w', 'h']);
+  assert.deepEqual([view.brainstorm.topics[0].x, view.brainstorm.topics[0].y], [900, 300]);
   assert.deepEqual(view.flowchart, { nodes: [], connections: [] });
   assert.ok(view.recent_history.length <= 10);
   assert.deepEqual(Object.keys(view.recent_history[0]), ['seq', 'author', 'summary', 'at']);
@@ -266,6 +270,8 @@ test('Claude can move a card and relabel an existing arrow', () => withServer(as
   assert.deepEqual([card.x, card.y], [700, 55]);
   assert.equal(card.updatedAt, before.updatedAt, 'a move is not an edit');
   assert.equal(store.board.flow.nodes.find((n) => n.id === a.id).x, 0);
+  const seen = (await call('view_board', {})).flowchart.nodes.find((n) => n.id === b.id);
+  assert.deepEqual([seen.x, seen.y], [700, 55]);
 
   const edgeId = store.board.flow.edges[0].id;
   assert.deepEqual((await call('view_board', {})).flowchart.connections, [{ id: edgeId, from: a.id, to: b.id, label: 'old' }]);
@@ -291,6 +297,8 @@ test('add_picture_from_url ingests the picture and places it', () => withServer(
   assert.equal(object.caption, 'Wizard');
   assert.equal(object.claudeAdded, true);
   await call('update_picture', { id: pic.id, caption: 'Old wizard' });
-  assert.equal((await call('view_board', {})).brainstorm.pictures[0].caption, 'Old wizard');
+  const [seenPicture] = (await call('view_board', {})).brainstorm.pictures;
+  assert.equal(seenPicture.caption, 'Old wizard');
+  assert.deepEqual([seenPicture.x, seenPicture.y, seenPicture.w, seenPicture.h], [object.x, object.y, object.w, object.h]);
   assert.match((await call('add_picture_from_url', { url: 'file:///etc/passwd' })).error, /http/);
 }));
