@@ -1,6 +1,6 @@
 // The board as the server stores it (see lib/board.mjs). Keep in step.
 
-export type Author = 'user' | 'claude';
+export type Author = 'user' | 'claude' | `agent:${string}`;
 export type Check = 'none' | 'open' | 'done';
 export type Color = 'slate' | 'violet' | 'green' | 'amber' | 'rose' | 'sky';
 export type FlowStatus = 'idea' | 'accepted' | 'rejected';
@@ -151,6 +151,56 @@ export interface Board {
   ruledOut: RuledOut[];
   chat: ChatMessage[];
   claudeSessionId: string | null;
+  colab: Colab;
+}
+
+export type AgentColor = 'amber' | 'sky' | 'green' | 'violet' | 'rose';
+
+export interface LineupAgent {
+  model: string;
+  roleId: string;
+  settings: Record<string, unknown>;
+}
+
+export interface RosterEntry {
+  id: string;
+  model: string;
+  roleId: string;
+  name: string;
+  modelName: string;
+  color: AgentColor;
+}
+
+export interface Colab {
+  roster: RosterEntry[];
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number };
+  extras: { rules: string; roles: Record<string, string> };
+  run: null | { round: number; spent: number };
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  job: string;
+}
+
+/** Prices are per million tokens. */
+export interface Model {
+  id: string;
+  name: string;
+  promptPrice: number;
+  completionPrice: number;
+  context: number;
+}
+
+export interface RunStatus {
+  state: 'idle' | 'waiting' | 'running' | 'stopping';
+  round: number;
+  rounds: number;
+  /** Roster id of the agent whose turn it is. */
+  current: string | null;
+  spent: number;
+  budget: number;
 }
 
 /** An operation sent to POST /api/op. */

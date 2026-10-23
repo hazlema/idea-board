@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { Draft } from '$lib/draft.svelte';
-  import { whoName } from '$lib/format';
+  import { authorName } from '$lib/authors';
   import { live } from '$lib/live.svelte';
   import type { FlowEdge } from '$lib/types';
 
@@ -37,7 +37,7 @@
 
 <div class="flex min-h-full flex-col gap-4">
   <div class="flex items-center justify-between text-xs text-muted">
-    <span>Connection · added by {whoName(edge.author)}</span>
+    <span>Connection · added by {authorName(live.board, edge.author)}</span>
     <button type="button" class="px-1.5 text-lg leading-none text-muted hover:text-text" title="Close (Esc)" aria-label="Close" onclick={onclose}>×</button>
   </div>
 

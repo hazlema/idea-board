@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import * as api from '$lib/api';
-  import { ago, whoName } from '$lib/format';
+  import { authorColor, authorName, isAi } from '$lib/authors';
+  import { ago } from '$lib/format';
   import { live } from '$lib/live.svelte';
   import type { HistoryRow, VersionMeta } from '$lib/types';
   import { preview, restoreVersion } from './preview.svelte';
@@ -24,10 +25,10 @@
     const items: Item[] = [];
     for (const row of list) {
       const last = items.at(-1);
-      if (row.author === 'claude' && row.turn && last?.kind === 'changes' && last.turn === row.turn) {
+      if (isAi(row.author) && row.turn && last?.kind === 'changes' && last.turn === row.turn) {
         last.rows.push(row);
       } else {
-        items.push({ kind: 'changes', key: `h${row.seq}`, at: row.at, author: row.author, turn: row.author === 'claude' && row.turn ? row.turn : null, rows: [row] });
+        items.push({ kind: 'changes', key: `h${row.seq}`, at: row.at, author: row.author, turn: isAi(row.author) && row.turn ? row.turn : null, rows: [row] });
       }
     }
     return items;
@@ -115,9 +116,9 @@
     {:else}
       {@const turn = item.turn}
       {@const open = item.rows.filter((r) => !r.undone)}
-      <article class="rounded-lg border bg-raised px-3 py-2 {item.author === 'claude' ? 'border-claude/40' : 'border-line'}">
+      <article class="rounded-lg border bg-raised px-3 py-2 {isAi(item.author) ? 'border-claude/40' : 'border-line'}">
         <div class="flex items-center gap-2 text-xs text-muted">
-          <span class="font-semibold {item.author === 'claude' ? 'text-claude' : 'text-text'}">{item.author === 'claude' ? 'Claude' : 'You'}</span>
+          <span class="font-semibold" style:color={isAi(item.author) ? authorColor(live.board, item.author) : undefined}>{authorName(live.board, item.author)}</span>
           <span>{ago(item.at)}</span>
           {#if turn && open.length}
             <button type="button" class="{small} ml-auto" onclick={() => void undoReply(turn)}>Undo this reply</button>
@@ -125,7 +126,7 @@
         </div>
         <ul class="mt-1 flex flex-col gap-0.5">
           {#each item.rows as row (row.seq)}
-            <li class={row.undone ? 'text-muted' : ''} title="{whoName(row.author)} · {stamp(row.at)}">
+            <li class={row.undone ? 'text-muted' : ''} title="{authorName(live.board, row.author)} · {stamp(row.at)}">
               <span class={row.undone ? 'line-through' : ''}>{row.summary}</span>
               {#if row.undone}<span class="text-xs"> (undone)</span>{/if}
             </li>

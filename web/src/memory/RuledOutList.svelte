@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { whoName } from '$lib/format';
+  import { authorName } from '$lib/authors';
   import { live } from '$lib/live.svelte';
 
   const records = $derived([...(live.board?.ruledOut ?? [])].reverse());
@@ -17,7 +17,7 @@
         <div class="mt-0.5 text-muted">“{record.reason}”</div>
       {/if}
       <div class="mt-1 flex items-center gap-2 text-xs text-muted">
-        <span class="min-w-0 flex-1 truncate">{whoName(record.by)} · {day(record.at)} · {record.source.label}</span>
+        <span class="min-w-0 flex-1 truncate">{authorName(live.board, record.by)} · {day(record.at)} · {record.source.label}</span>
         <button
           type="button"
           class="shrink-0 rounded-md border border-line bg-panel px-2 py-px text-accent hover:border-accent"

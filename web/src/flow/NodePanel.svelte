@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
   import { Draft } from '$lib/draft.svelte';
-  import { ago, whoName } from '$lib/format';
+  import { authorName } from '$lib/authors';
+  import { ago } from '$lib/format';
   import { live } from '$lib/live.svelte';
   import type { FlowNode, FlowProp, FlowStatus } from '$lib/types';
 
@@ -132,7 +133,7 @@
 
 <div class="flex min-h-full flex-col gap-4">
   <div class="flex items-center justify-between text-xs text-muted">
-    <span>Added by {whoName(node.author)} · {ago(node.createdAt)}</span>
+    <span>Added by {authorName(live.board, node.author)} · {ago(node.createdAt)}</span>
     <button type="button" class="px-1.5 text-lg leading-none text-muted hover:text-text" title="Close (Esc)" aria-label="Close" onclick={onclose}>×</button>
   </div>
 
@@ -216,7 +217,7 @@
   </div>
 
   <div class="mt-auto flex items-center justify-between">
-    <span class="text-sm text-muted">Last edit: {whoName(node.updatedBy)} · {ago(node.updatedAt)}</span>
+    <span class="text-sm text-muted">Last edit: {authorName(live.board, node.updatedBy)} · {ago(node.updatedAt)}</span>
     <button type="button" class="rounded-md border border-line px-2.5 py-1 text-rose-400 hover:border-rose-400" onclick={ondelete}>Delete</button>
   </div>
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Draft } from '$lib/draft.svelte';
   import { ago } from '$lib/format';
+  import { authorName } from '$lib/authors';
   import { live } from '$lib/live.svelte';
   import type { Section } from '$lib/types';
 
@@ -101,5 +102,5 @@
       point();
     }}
   ></textarea>
-  <div class="px-1.5 text-xs text-muted">Last edit: {section.updatedBy === 'claude' ? 'Claude' : 'You'} · {ago(section.updatedAt, now)}</div>
+  <div class="px-1.5 text-xs text-muted">Last edit: {authorName(live.board, section.updatedBy)} · {ago(section.updatedAt, now)}</div>
 </div>

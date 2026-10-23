@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { whoName } from '$lib/format';
+  import { authorColor, authorName } from '$lib/authors';
+  import { live } from '$lib/live.svelte';
   import type { FlowNode } from '$lib/types';
 
   interface Props {
@@ -72,7 +73,7 @@
     <div class="flex-1 truncate leading-snug font-semibold {rejected ? 'line-through' : ''}" title={node.title}>{node.title}</div>
   </div>
   <div class="mt-1 flex gap-2 pl-[22px] text-xs text-muted">
-    <span class="font-semibold {node.author === 'claude' ? 'text-claude' : ''}">{whoName(node.author)}</span>
+    <span class="font-semibold" style:color={node.author === 'user' ? undefined : authorColor(live.board, node.author)}>{authorName(live.board, node.author)}</span>
     {#if node.props.length}<span>{node.props.length} prop{node.props.length > 1 ? 's' : ''}</span>{/if}
     {#if node.notes.trim()}<span>notes</span>{/if}
   </div>

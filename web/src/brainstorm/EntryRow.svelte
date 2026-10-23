@@ -265,7 +265,7 @@
       ></textarea>
     </div>
     {#if entry.claudeAdded}
-      <ClaudeMark variant="entry" onkeep={() => void live.send({ type: 'keep', id: group.id, entryId: entry.id })} ondismiss={sendRuleOut} />
+      <ClaudeMark variant="entry" by={entry.author} onkeep={() => void live.send({ type: 'keep', id: group.id, entryId: entry.id })} ondismiss={sendRuleOut} />
     {/if}
   </div>
 

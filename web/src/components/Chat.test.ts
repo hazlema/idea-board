@@ -114,3 +114,32 @@ test('the text size slider sizes the chat and is remembered', async () => {
   expect(chat.style.fontSize).toBe('24px');
   expect(JSON.parse(localStorage.getItem('idea-board-chat') ?? '{}').fontSize).toBe(24);
 });
+
+const agent = 'agent:x/y=qa' as const;
+function withRoster() {
+  const board = emptyBoard();
+  board.colab.roster = [{ id: agent, model: 'x/y', roleId: 'qa', name: 'Y · QA', modelName: 'Y', color: 'sky' }];
+  board.chat = [{ id: 'c1', role: agent, text: 'hello', at: '2026-01-01T00:00:00Z', handled: true }];
+  live.board = board;
+}
+
+test('an agent message is labelled with its roster name', () => {
+  withRoster();
+  render(Chat);
+  expect(screen.getByText('Y · QA')).toBeInTheDocument();
+});
+
+test('the status line shows the round and whose turn it is', () => {
+  withRoster();
+  live.colab = { state: 'running', round: 2, rounds: 5, current: agent, spent: 0, budget: 5 };
+  render(Chat);
+  expect(screen.getByText("Round 2 of 5 · Y's turn")).toBeInTheDocument();
+  live.colab = null;
+});
+
+test('a waiting run says so', () => {
+  live.colab = { state: 'waiting', round: 0, rounds: 5, current: null, spent: 0, budget: 5 };
+  render(Chat);
+  expect(screen.getByText('Waiting for your first message')).toBeInTheDocument();
+  live.colab = null;
+});

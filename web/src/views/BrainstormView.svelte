@@ -446,7 +446,7 @@
           <TopicBubble topic={o} drag={dragFor(o)} autofocus={focusNew === o.id} onfocused={() => (focusNew = null)} />
         {/if}
         {#if o.claudeAdded}
-          <ClaudeMark variant="object" onkeep={() => void live.send({ type: 'keep', id: o.id })} ondismiss={(reason) => dismissObject(o, reason)} />
+          <ClaudeMark variant="object" by={o.author} onkeep={() => void live.send({ type: 'keep', id: o.id })} ondismiss={(reason) => dismissObject(o, reason)} />
         {/if}
       </div>
     {/each}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { CHAT_FONT, chatPrefs } from '$lib/chatPrefs.svelte';
+  import { authorColor, authorName, isAi } from '$lib/authors';
   import { live } from '$lib/live.svelte';
   import type { ChatMessage, Pointer } from '$lib/types';
   import { preview } from '../memory/preview.svelte';
@@ -31,6 +32,12 @@
   );
 
   const status = $derived.by(() => {
+    const run = live.colab;
+    if (run?.state === 'waiting') return 'Waiting for your first message';
+    if (run && (run.state === 'running' || run.state === 'stopping')) {
+      const turn = live.board?.colab?.roster.find((r) => r.id === run.current)?.modelName;
+      return `Round ${run.round} of ${run.rounds}${turn ? ` · ${turn}'s turn` : ''}`;
+    }
     if (live.agent === 'working') return 'Claude is working on the board';
     if (live.presence) return 'A Claude session is listening';
     if (live.agent === 'off') return 'Background Claude is off; chat waits for a session';
@@ -92,8 +99,8 @@
     {#each items as item (item.key)}
       {#if item.message}
         {@const message = item.message}
-        <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {message.role === 'claude' ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
-          <div class="text-[0.8em] font-medium {message.role === 'claude' ? 'text-claude' : 'text-accent'}">{message.role === 'claude' ? 'Claude' : 'You'}</div>
+        <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {isAi(message.role) ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
+          <div class="text-[0.8em] font-medium" style:color={authorColor(live.board, message.role)}>{authorName(live.board, message.role)}</div>
           <div class="break-words whitespace-pre-wrap">{message.text}</div>
           {#if message.context?.length}
             <div class="mt-1 text-[0.8em] text-muted">About: {message.context.map((c) => c.label).join(', ')}</div>

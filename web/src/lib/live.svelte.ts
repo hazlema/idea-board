@@ -1,6 +1,7 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import * as api from './api';
-import type { AgentState, Board, Op, Pointer } from './types';
+import { isAi } from './authors';
+import type { AgentState, Author, Board, Op, Pointer, RunStatus } from './types';
 
 export type View = 'brief' | 'brainstorm' | 'flowchart' | 'collaborate';
 export interface Notice {
@@ -24,7 +25,8 @@ type ServerEvent =
   | { type: 'agent'; state: 'working' | 'idle' | 'error'; message?: string }
   | { type: 'presence'; attached: boolean }
   | { type: 'history' }
-  | { type: 'versions' };
+  | { type: 'versions' }
+  | { type: 'colab'; status: RunStatus };
 
 function savedView(): View {
   try {
@@ -40,6 +42,8 @@ class Live {
   board = $state<Board | null>(null);
   agent = $state<AgentState>('idle');
   presence = $state(false);
+  /** The state of the agents' run, or null before the server has said. */
+  colab = $state<RunStatus | null>(null);
   /** Edits sent and not yet answered. */
   saving = $state(0);
   /** The last edit sent failed. */
@@ -155,7 +159,7 @@ class Live {
     switch (event.type) {
       case 'board':
         this.board = event.board;
-        if (event.author === 'claude') this.#flash(event.changed ?? []);
+        if (event.author && isAi(event.author as Author)) this.#flash(event.changed ?? []);
         break;
       case 'agent':
         this.agent = event.state === 'error' ? 'idle' : event.state;
@@ -171,6 +175,9 @@ class Live {
         break;
       case 'versions':
         this.versionsTick += 1;
+        break;
+      case 'colab':
+        this.colab = event.status;
         break;
     }
   }
