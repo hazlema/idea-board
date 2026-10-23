@@ -46,6 +46,21 @@ test('restoring a version brings content back but keeps memory and chat', () => 
   assert.equal(store.versions.read(backup.id).content.brainstorm.pages[0].objects.some((o) => o.id === note.id), true);
 }));
 
+test('restoring a version saved while an item was ruled out, after bringing it back, does not leave it stuck', () => withStore((store) => {
+  const { object: group } = store.apply({ type: 'addObject', kind: 'group', title: 'Wizards' }, 'user');
+  const { entry } = store.apply({ type: 'addEntry', groupId: group.id, label: 'Fireballs' }, 'user');
+  const { node } = store.apply({ type: 'addNode', title: 'Pay to win', x: 0, y: 0 }, 'user');
+  store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: group.id, entryId: entry.id } }, 'user');
+  store.apply({ type: 'ruleOut', target: { kind: 'node', id: node.id } }, 'user');
+  const saved = store.saveVersion('ruled out', 'user');
+  for (const record of [...store.board.ruledOut]) store.apply({ type: 'bringBack', id: record.id }, 'user');
+  store.restoreVersion(saved.id, 'user');
+  const fireballs = objects(store).find((o) => o.id === group.id).entries.find((e) => e.id === entry.id);
+  assert.equal(fireballs.ruledOut, false);
+  assert.equal(store.board.flow.nodes.find((n) => n.id === node.id).status, 'idea');
+  store.apply({ type: 'updateNode', id: node.id, status: 'accepted' }, 'user');
+}));
+
 test('a restore can be undone', () => withStore((store) => {
   const { first, note } = setUp(store);
   store.restoreVersion(first.id, 'user');

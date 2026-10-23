@@ -176,6 +176,18 @@ test('findRuledOutMatches flags close ideas but not loose ones', () => {
   assert.equal(findRuledOutMatches('the and for', records).length, 0);
 });
 
+test('findRuledOutMatches flags an exact repeat of a one-word record', () => {
+  const records = [{ id: 'r_1', text: 'Fireballs', reason: 'x' }];
+  assert.equal(findRuledOutMatches('Fireballs', records).length, 1);
+  assert.equal(findRuledOutMatches('fireball', records).length, 1);
+  assert.equal(findRuledOutMatches('Fireballs everywhere', records).length, 1);
+  // A one-word text does not match a longer record on that word alone.
+  assert.equal(findRuledOutMatches('Wizards', [{ id: 'r_5', text: 'Wizards cast fireballs and damage spells', reason: 'x' }]).length, 0);
+  // Between two texts of several words, one shared word is still too little.
+  assert.equal(findRuledOutMatches('Fireballs for wizards', [{ id: 'r_2', text: 'Fireballs for dragons', reason: 'x' }]).length, 0);
+  assert.equal(findRuledOutMatches('Wizards cast spells', [{ id: 'r_4', text: 'Wizards ride dragons', reason: 'x' }]).length, 0);
+});
+
 test('enforceRuledOut re-applies records to restored content', () => {
   const b = emptyBoard();
   const g = group(b, 'G', [{ label: 'A' }]);
@@ -197,6 +209,23 @@ test('enforceRuledOut re-applies records to restored content', () => {
   assert.equal(page(b).links.length, 0);
   assert.equal(node.status, 'rejected');
   assert.equal(b.ruledOut.length, 3);
+});
+
+test('enforceRuledOut clears ruled-out state that has no record', () => {
+  const b = emptyBoard();
+  const g = group(b, 'G', [{ label: 'A' }, { label: 'B' }]);
+  const [a, kept] = g.entries;
+  applyOp(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: kept.id } }, 'user');
+  a.ruledOut = true; // a restored version struck out, brought back since
+  const { node } = applyOp(b, { type: 'addNode', title: 'C', x: 0, y: 0 }, 'user');
+  node.status = 'rejected';
+  const { node: other } = applyOp(b, { type: 'addNode', title: 'D', x: 0, y: 0 }, 'user');
+  applyOp(b, { type: 'ruleOut', target: { kind: 'node', id: other.id } }, 'user');
+  enforceRuledOut(b);
+  assert.equal(a.ruledOut, false);
+  assert.equal(kept.ruledOut, true);
+  assert.equal(node.status, 'idea');
+  assert.equal(other.status, 'rejected');
 });
 
 test('a rejected v1 card migrates with one ruled-out record and can be brought back', () => {
