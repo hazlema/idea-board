@@ -151,6 +151,14 @@ test('chat context is validated before anything is stored', () => withServer(asy
   assert.equal('context' in store.board.chat[1], false);
 }));
 
+test('undo_reply refuses a turn of the user\'s', () => withServer(async ({ call, userOp, store }) => {
+  await userOp({ type: 'addObject', kind: 'note', text: 'mine' });
+  const { entries } = await call('get_history', {});
+  const row = entries.find((e) => e.author === 'user');
+  assert.match((await call('undo_reply', { turn: row.turn })).error, /not one of your replies/);
+  assert.equal(store.board.brainstorm.pages[0].objects.length, 1);
+}));
+
 test('Claude can undo its own reply and save a version', () => withServer(async ({ call }) => {
   const note = await call('add_note', { text: 'a rash idea' });
   await call('reply', { text: 'Added a note.' });

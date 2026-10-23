@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { applyOp, emptyBoard } from '../lib/board.mjs';
+import { OpError, applyOp, emptyBoard } from '../lib/board.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { HistoryLog, applyChanges, collections, describeOp, diffContent } from '../lib/history.mjs';
 
@@ -141,6 +141,42 @@ test('undoTurn reverts every change of one Claude reply and nothing else', () =>
   assert.equal(row.kind, 'undo');
   assert.equal(row.changes, undefined);
   assert.equal(store.history().entries.filter((r) => r.undone).length, 2);
+}));
+
+test('Claude can only undo its own replies, not a turn of the user\'s', () => withStore((store) => {
+  const { object: mine } = store.apply({ type: 'addObject', kind: 'note', text: 'mine' }, 'user');
+  store.historyLog.flush();
+  const userTurn = lastTurn(store);
+  assert.match(userTurn, /^u/);
+  assert.throws(() => store.undoTurn(userTurn, 'claude'), (error) => error instanceof OpError && /not one of your replies/.test(error.message));
+  assert.ok(object(store.board, mine.id));
+  const { object: theirs } = store.apply({ type: 'addObject', kind: 'note', text: 'theirs' }, 'claude');
+  assert.deepEqual(store.undoTurn(lastTurn(store), 'claude'), { undone: 1, skipped: [] });
+  assert.equal(object(store.board, theirs.id), undefined);
+}));
+
+test('a failed op leaves the board as it was, with no history step', () => withStore((store, file) => {
+  const { object: kept } = store.apply({ type: 'addObject', kind: 'note', text: 'kept' }, 'user');
+  store.historyLog.flush();
+  const board = structuredClone(store.board);
+  const rows = store.history().entries.length;
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  // The temp file the save writes is in the way, so saving throws after the op has applied.
+  const blocker = `${file}.${process.pid}.tmp`;
+  fs.mkdirSync(blocker);
+  assert.throws(() => store.apply({ type: 'addObject', kind: 'note', text: 'lost' }, 'user'));
+  assert.deepEqual(store.board, board);
+  assert.throws(() => store.undo());
+  assert.deepEqual(store.board, board);
+  assert.throws(() => store.apply({ type: 'chat', text: 'hi' }, 'claude'));
+  assert.deepEqual(store.board, board);
+  assert.equal(store.history().entries.length, rows);
+  assert.deepEqual(events, []);
+  fs.rmdirSync(blocker);
+  store.apply({ type: 'addObject', kind: 'note', text: 'next' }, 'user');
+  assert.equal(store.board.version, board.version + 1);
+  assert.ok(object(store.board, kept.id));
 }));
 
 test('undoing a Claude reply ignores later edits elsewhere in the same group', () => withStore((store) => {
