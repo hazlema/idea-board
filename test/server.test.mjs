@@ -2,45 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
-import { BoardStore } from '../lib/store.mjs';
-import { Presence } from '../lib/mcp.mjs';
-import { createServer } from '../server.mjs';
-
-async function withServer(fn, { graceMs } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
-  const store = new BoardStore(path.join(dir, 'board.json'));
-  const presence = new Presence(store, { graceMs: graceMs ?? 50 });
-  const nudges = [];
-  const agent = { running: false, nudge: () => nudges.push(Date.now()) };
-  const server = createServer({ store, agent, presence, port: 0 });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  // createServer validated against port 0; rebuild with the real port.
-  server.close();
-  const real = createServer({ store, agent, presence, port });
-  await new Promise((resolve) => real.listen(port, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${port}`;
-  let rpcId = 0;
-  const rpc = async (method, params) => {
-    const res = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }) });
-    return res.json();
-  };
-  const call = async (name, args) => {
-    const reply = await rpc('tools/call', { name, arguments: args });
-    const text = reply.result.content[0].text;
-    return reply.result.isError ? { error: text } : JSON.parse(text);
-  };
-  const userOp = (op, headers = {}) => fetch(`${base}/api/op`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ op }) });
-  try {
-    await fn({ base, rpc, call, userOp, store, nudges, port });
-  } finally {
-    real.close();
-    store.historyLog.flush();
-    fs.rmSync(dir, { recursive: true });
-  }
-}
+import { withServer } from './helpers.mjs';
 
 test('MCP initialize and tools/list', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
@@ -56,8 +19,8 @@ test('Claude edits through MCP show up for the user, attributed to Claude', () =
   const child = await call('add_node', { title: 'Soul tax', connect_from: root.id, edge_label: 'costs' });
   await call('update_node', { id: child.id, set_props: { rate: '10%' } });
   const view = await call('view_board', {});
-  assert.equal(view.nodes.length, 2);
-  assert.deepEqual(view.connections, [{ from: root.id, to: child.id, label: 'costs' }]);
+  assert.equal(view.flowchart.nodes.length, 2);
+  assert.deepEqual(view.flowchart.connections, [{ from: root.id, to: child.id, label: 'costs' }]);
   const { board } = await (await fetch(`${base}/api/board`)).json();
   assert.ok(board.flow.nodes.every((n) => n.author === 'claude'));
   const detail = await call('get_node', { id: root.id });
@@ -117,7 +80,7 @@ test('Claude sees the brief first and can add to it', () => withServer(async ({ 
   assert.deepEqual(Object.keys(view).slice(0, 2), ['title', 'brief']);
   assert.equal(view.brief[0].text, 'A deck-building warlock game');
   assert.equal(view.brief[1].id, added.id);
-  assert.equal(view.brief[1].last_edited_by, 'claude');
+  assert.equal(view.brief[1].text, 'No permadeath');
 }));
 
 test('history endpoint lists newest first with undone flags', () => withServer(async ({ base, userOp, call, store }) => {
