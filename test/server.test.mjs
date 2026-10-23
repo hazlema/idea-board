@@ -36,6 +36,7 @@ async function withServer(fn, { graceMs } = {}) {
     await fn({ base, rpc, call, userOp, store, nudges, port });
   } finally {
     real.close();
+    store.historyLog.flush();
     fs.rmSync(dir, { recursive: true });
   }
 }
@@ -116,4 +117,30 @@ test('Claude sees the brief first and can add to it', () => withServer(async ({ 
   assert.equal(view.brief[0].text, 'A deck-building warlock game');
   assert.equal(view.brief[1].id, added.id);
   assert.equal(view.brief[1].last_edited_by, 'claude');
+}));
+
+test('history endpoint lists newest first with undone flags', () => withServer(async ({ base, userOp, call, store }) => {
+  const post = (route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  const history = async (query = '') => (await (await fetch(`${base}/api/history${query}`)).json()).entries;
+  await userOp({ type: 'addNode', title: 'One', x: 0, y: 0 });
+  await userOp({ type: 'addNode', title: 'Two', x: 0, y: 100 });
+  const undo = await post('/api/undo');
+  assert.equal(undo.status, 200);
+  assert.equal((await undo.json()).undone.summary, 'added card “Two”');
+  const entries = await history();
+  assert.equal(entries[0].kind, 'undo');
+  assert.equal(entries.find((e) => e.summary === 'added card “Two”').undone, true);
+  assert.equal(entries.find((e) => e.summary === 'added card “One”').undone, false);
+  assert.deepEqual((await history('?limit=1&before=3')).map((e) => e.seq), [2]);
+  assert.equal((await post('/api/redo')).status, 200);
+  assert.deepEqual(store.board.flow.nodes.map((n) => n.title), ['One', 'Two']);
+
+  const added = await call('add_node', { title: 'From Claude' });
+  const [claudeRow] = await history();
+  assert.match(claudeRow.turn, /^t_/);
+  const undoTurn = await post('/api/undo-turn', { turn: claudeRow.turn });
+  assert.deepEqual(await undoTurn.json(), { undone: 1, skipped: [] });
+  assert.ok(!store.board.flow.nodes.some((n) => n.id === added.id));
+  assert.equal((await post('/api/undo-turn', {})).status, 400);
+  assert.equal((await fetch(`${base}/api/history?limit=abc`)).status, 400);
 }));

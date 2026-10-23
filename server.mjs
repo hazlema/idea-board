@@ -101,6 +101,24 @@ export function createServer({ store, agent, presence, port }) {
         }
       }
 
+      if (url.pathname === '/api/undo' && req.method === 'POST') return sendJson(res, 200, store.undo());
+      if (url.pathname === '/api/redo' && req.method === 'POST') return sendJson(res, 200, store.redo());
+
+      if (url.pathname === '/api/undo-turn' && req.method === 'POST') {
+        const { turn } = (await readBody(req)) ?? {};
+        if (typeof turn !== 'string' || !turn) return sendJson(res, 400, { error: 'turn is required' });
+        return sendJson(res, 200, store.undoTurn(turn));
+      }
+
+      if (url.pathname === '/api/history' && req.method === 'GET') {
+        const limit = url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 50;
+        const before = url.searchParams.has('before') ? Number(url.searchParams.get('before')) : undefined;
+        if (!Number.isInteger(limit) || limit < 1 || (before !== undefined && !Number.isInteger(before))) {
+          return sendJson(res, 400, { error: 'limit and before must be whole numbers' });
+        }
+        return sendJson(res, 200, store.history({ limit: Math.min(limit, 500), before }));
+      }
+
       if (req.method === 'GET') {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
         const file = path.join(PUBLIC_DIR, name);
@@ -132,6 +150,13 @@ function main() {
     console.error(error.code === 'EADDRINUSE' ? `Port ${options.port} is in use. Try --port <other>.` : error.message);
     process.exit(1);
   });
+  // Coalesced typing may still be waiting to be written to the history file.
+  const shutdown = () => {
+    store.historyLog.flush();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
   server.listen(options.port, HOST, () => {
     console.log(`Idea board:  http://${HOST}:${options.port}`);
     console.log(`Board file:  ${store.file}`);
