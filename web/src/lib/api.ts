@@ -1,4 +1,4 @@
-import type { BoardInfo, HistoryRow, Op, Skipped, VersionMeta, Board } from './types';
+import type { BoardInfo, HistoryRow, Model, Op, Role, RunStatus, Skipped, VersionMeta, Board } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -64,3 +64,32 @@ export async function exportDoc(): Promise<string> {
 }
 
 export const boardInfo = (): Promise<BoardInfo> => request('/api/board');
+
+export interface ColabInfo {
+  status: RunStatus;
+  hasKey: boolean;
+  library: { rules: string; roles: Role[] };
+}
+
+export const colab = (): Promise<ColabInfo> => request('/api/colab');
+
+export async function colabModels(): Promise<Model[]> {
+  return (await request<{ models: Model[] }>('/api/colab/models')).models;
+}
+
+export async function saveLibrary(library: { rules: string; roles: Role[] }): Promise<{ rules: string; roles: Role[] }> {
+  const res = await request<{ library: { rules: string; roles: Role[] } }>('/api/colab/library', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(library),
+  });
+  return res.library;
+}
+
+export async function startColab(): Promise<RunStatus> {
+  return (await post<{ status: RunStatus }>('/api/colab/start')).status;
+}
+
+export async function stopColab(): Promise<RunStatus> {
+  return (await post<{ status: RunStatus }>('/api/colab/stop')).status;
+}

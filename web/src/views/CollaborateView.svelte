@@ -1,19 +1,20 @@
 <script lang="ts">
   import Chat from '../components/Chat.svelte';
+  import AgentsPanel from '../colab/AgentsPanel.svelte';
   import { chatPrefs } from '$lib/chatPrefs.svelte';
 </script>
 
 <!-- The chat's own tab. Popped out, it floats over every tab instead (ChatWindow). -->
-<section class="flex min-w-0 flex-1 flex-col bg-panel" aria-label="Collaborate">
+<section class="flex min-w-0 flex-1 bg-panel" aria-label="Collaborate">
   {#if chatPrefs.popped}
-    <div class="flex flex-1 flex-col items-center justify-center gap-3 text-muted">
+    <div class="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 text-muted">
       <p>The chat is popped out.</p>
       <button type="button" class="rounded-md border border-line bg-raised px-3 py-1.5 text-text hover:border-muted" onclick={() => (chatPrefs.popped = false)}
         >Bring it back here</button
       >
     </div>
   {:else}
-    <div class="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+    <div class="mx-auto flex min-h-0 w-full max-w-5xl min-w-0 flex-1 flex-col">
       <Chat>
         {#snippet controls()}
           <button
@@ -26,4 +27,5 @@
       </Chat>
     </div>
   {/if}
+  <AgentsPanel />
 </section>
