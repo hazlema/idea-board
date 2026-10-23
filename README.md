@@ -20,9 +20,10 @@ and decide.
 
 ## Install and start
 
-Needs Node 18+ and, for the chat, the [Claude Code](https://claude.com/claude-code)
-CLI (`claude`) signed in. The server itself has no runtime dependencies; the
-page is built once with Vite and Svelte.
+The server runs on Node 18+ and has no runtime dependencies. Building the page
+(Vite and Svelte, done once) needs Node 20.19+, and running the tests needs
+Node 22.12+. For the chat you also need the
+[Claude Code](https://claude.com/claude-code) CLI (`claude`) signed in.
 
 ```bash
 git clone <this repo> ~/idea-board    # or wherever you keep tools
@@ -62,10 +63,13 @@ Flowchart and the brief carries over.
 ## Using the board
 
 There is no save button: every change is written to the board file at once.
-The top bar shows "All changes saved".
+The top bar shows "All changes saved". If a save fails (the server stopped,
+say), what you typed stays on screen, the top bar says "Not saved", and it is
+tried again every few seconds until it goes through.
 
 Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**. The chat bar
-stays at the bottom on every tab. The side panel shows **Memory** (tabs
+stays at the bottom on every tab; its **Chat** toggle hides the messages and
+leaves just the input row. The side panel shows **Memory** (tabs
 **Ruled out** and **History**); on Flowchart, selecting a card shows its
 details there instead.
 
@@ -146,9 +150,12 @@ Claude forget a rejection.
 ### Export
 
 The **⋯** menu has **Export design doc**: it writes `<board>.design.md` next
-to the board: the brief, each group's entries marked agreed, undecided or
-note (ruled-out entries left out), notes, picture captions with file paths,
-accepted flowchart cards and connections, and the Ruled out list with reasons.
+to the board as Markdown: the brief; each group's entries as bullets, `[x]`
+for agreed, `[ ]` for undecided and a plain bullet for a note (ruled-out
+entries left out); notes; picture captions with file paths; links; accepted
+flowchart cards and the connections between them; and the Ruled out list with
+reasons. Anything Claude added that you have not kept yet is tagged
+_(Claude added, not reviewed)_.
 
 ## Claude in the chat
 
@@ -203,7 +210,8 @@ node server.mjs --no-agent       # the board server on 4777
 npm run dev                      # Vite dev server with hot reload; proxies /api, /assets and /mcp to 4777
 ```
 
-Open the URL Vite prints. The front end is Svelte 5 (runes), TypeScript and
+Open the URL Vite prints. `--no-agent` keeps the background Claude off while
+you work on the page; leave it out when you want to test the chat. The front end is Svelte 5 (runes), TypeScript and
 Tailwind 4 under `web/`; the server is plain JavaScript with no runtime
 dependencies (`lib/` and `server.mjs`).
 
