@@ -7,6 +7,8 @@ vi.mock('$lib/api', () => ({ op: vi.fn().mockResolvedValue({}) }));
 import * as api from '$lib/api';
 import { live } from '$lib/live.svelte';
 import ChatDock from './ChatDock.svelte';
+import { preview } from '../memory/preview.svelte';
+import type { VersionMeta } from '$lib/types';
 
 beforeEach(() => {
   vi.mocked(api.op).mockClear();
@@ -14,6 +16,7 @@ beforeEach(() => {
   live.pointing = null;
   live.agent = 'idle';
   live.presence = false;
+  preview.close();
 });
 
 async function typeAndSend(text: string) {
@@ -80,4 +83,21 @@ test('messages show who said them, and the agent status line follows the agent',
   expect(screen.getByText('Claude')).toBeInTheDocument();
   expect(screen.getByText('Wizards could be a class.')).toBeInTheDocument();
   expect(screen.getByText('Claude is working on the board')).toBeInTheDocument();
+});
+
+test('chat waits while a version is being previewed', async () => {
+  const meta: VersionMeta = { id: 'v_1', name: 'Old', at: '', author: 'user', auto: false, stats: { groups: 0, entries: 0, notes: 0, pictures: 0, cards: 0 } };
+  preview.current = { meta, content: emptyBoard() };
+  render(ChatDock);
+
+  const input = screen.getByPlaceholderText('Close the preview to chat');
+  expect(input).toBeDisabled();
+  await fireEvent.input(input, { target: { value: 'hello' } });
+  await fireEvent.keyDown(input, { key: 'Enter' });
+  expect(api.op).not.toHaveBeenCalled();
+
+  preview.close();
+  await waitFor(() => expect(screen.getByPlaceholderText(/tell claude/i)).toBeEnabled());
+  await fireEvent.keyDown(screen.getByPlaceholderText(/tell claude/i), { key: 'Enter' });
+  await waitFor(() => expect(api.op).toHaveBeenCalledWith({ type: 'chat', text: 'hello', context: undefined }));
 });

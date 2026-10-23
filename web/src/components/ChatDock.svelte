@@ -1,8 +1,13 @@
 <script lang="ts">
   import { live } from '$lib/live.svelte';
   import type { ChatMessage, Pointer } from '$lib/types';
+  import { preview } from '../memory/preview.svelte';
 
   const MAX_LABEL = 200;
+  const PLACEHOLDER = "Tell Claude what you're thinking… (Enter to send, Shift+Enter for a new line)";
+
+  // Chat would change the live board, so it waits while an old version is being looked at.
+  const previewing = $derived(preview.current !== null);
 
   let draft = $state('');
   let log: HTMLDivElement | undefined = $state();
@@ -36,7 +41,7 @@
 
   async function submit(): Promise<void> {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || previewing) return;
     const context = contextFor(live.pointing);
     draft = '';
     const sent = await live.send({ type: 'chat', text, context });
@@ -87,7 +92,8 @@
       bind:value={draft}
       {onkeydown}
       rows="2"
-      placeholder="Tell Claude what you're thinking… (Enter to send, Shift+Enter for a new line)"
+      placeholder={previewing ? 'Close the preview to chat' : PLACEHOLDER}
+      disabled={previewing}
       class="w-full resize-none rounded-md border border-line bg-ink px-3 py-2 placeholder:text-muted"
     ></textarea>
   </div>
