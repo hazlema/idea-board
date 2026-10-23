@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { OpError, applyOp, emptyBoard } from '../lib/board.mjs';
 import { findObject, objectLabel, placeObject, DEFAULT_SIZE, KINDS, COLORS, CHECKS } from '../lib/brainstorm.mjs';
 
+const A = 'a'.repeat(32) + '.png';
+const B = 'b'.repeat(32) + '.jpg';
+const C = '0123456789abcdef'.repeat(2) + '.webp';
 const page = (b) => b.brainstorm.pages[0];
 const add = (b, op, who = 'user') => applyOp(b, { type: 'addObject', ...op }, who).object;
 
@@ -34,8 +37,8 @@ test('objects of every kind get their own fields and timestamps', () => {
   assert.deepEqual([n.text, n.color, n.w, n.h, n.x, n.y], ['idea', 'rose', 220, 140, 1, 2]);
   assert.ok(n.createdAt && n.updatedAt);
   assert.equal(n.updatedBy, 'user');
-  const p = add(b, { kind: 'picture', asset: 'a1.png', caption: 'map', preview: 'data:image/png;base64,AA==' });
-  assert.deepEqual([p.asset, p.caption, p.preview, p.w, p.h], ['a1.png', 'map', 'data:image/png;base64,AA==', 240, 0]);
+  const p = add(b, { kind: 'picture', asset: A, caption: 'map', preview: B });
+  assert.deepEqual([p.asset, p.caption, p.preview, p.w, p.h], [A, 'map', B, 240, 0]);
   const t = add(b, { kind: 'topic', text: 'Combat' });
   assert.deepEqual([t.text, t.w, t.h], ['Combat', 0, 0]);
 });
@@ -94,10 +97,16 @@ test('updateObject edits fields and records who; moveObject does not', () => {
 
 test('setPicturePreview stores a preview on pictures only', () => {
   const b = emptyBoard();
-  const p = add(b, { kind: 'picture', asset: 'a.png', x: 0, y: 0 });
+  const p = add(b, { kind: 'picture', asset: A, x: 0, y: 0 });
   assert.equal(p.preview, null);
-  applyOp(b, { type: 'setPicturePreview', id: p.id, preview: 'data:image/jpeg;base64,AA==' }, 'user');
-  assert.equal(p.preview, 'data:image/jpeg;base64,AA==');
+  applyOp(b, { type: 'setPicturePreview', id: p.id, preview: C }, 'user');
+  assert.equal(p.preview, C);
+  applyOp(b, { type: 'setPicturePreview', id: p.id, preview: null }, 'user');
+  assert.equal(p.preview, null);
+  for (const preview of ['data:image/png;base64,AA==', '../x.png', 'evil.svg']) {
+    assert.throws(() => applyOp(b, { type: 'setPicturePreview', id: p.id, preview }, 'user'), OpError, preview);
+  }
+  assert.equal(p.preview, null);
   const n = add(b, { kind: 'note', text: 'x' });
   assert.throws(() => applyOp(b, { type: 'setPicturePreview', id: n.id, preview: 'x' }, 'user'), OpError);
 });
@@ -153,8 +162,8 @@ test('findObject and objectLabel', () => {
   const b = emptyBoard();
   const g = add(b, { kind: 'group', title: 'Wizards', x: 0, y: 0 });
   const n = add(b, { kind: 'note', text: `${'x'.repeat(80)}\nsecond line`, x: 0, y: 300 });
-  const p = add(b, { kind: 'picture', asset: 'a.png', x: 0, y: 600 });
-  const p2 = add(b, { kind: 'picture', asset: 'b.png', caption: 'Map', x: 0, y: 900 });
+  const p = add(b, { kind: 'picture', asset: A, x: 0, y: 600 });
+  const p2 = add(b, { kind: 'picture', asset: B, caption: 'Map', x: 0, y: 900 });
   const t = add(b, { kind: 'topic', text: 'Combat', x: 0, y: 1200 });
   assert.equal(findObject(b, g.id).object, g);
   assert.equal(findObject(b, g.id).page, page(b));
@@ -182,17 +191,23 @@ test('bad brainstorm ops are refused', () => {
   const bad = (op) => assert.throws(() => applyOp(b, op, 'user'), OpError, JSON.stringify(op));
   bad({ type: 'addObject', kind: 'video' });
   bad({ type: 'addObject', kind: 'picture' });
+  for (const asset of ['data:image/png;base64,AA==', '../x.png', 'evil.svg', 'a.png']) bad({ type: 'addObject', kind: 'picture', asset });
+  bad({ type: 'addObject', kind: 'picture', asset: A, preview: 'data:image/png;base64,AA==' });
   bad({ type: 'addObject', kind: 'note', color: 'pink' });
   bad({ type: 'addObject', kind: 'note', near: 'nope' });
   bad({ type: 'addObject', kind: 'note', page: 'p_nope' });
   bad({ type: 'addObject', kind: 'group', title: 'x'.repeat(201) });
-  bad({ type: 'addObject', kind: 'picture', asset: 'a.png', caption: 'x'.repeat(501) });
+  bad({ type: 'addObject', kind: 'picture', asset: A, caption: 'x'.repeat(501) });
   bad({ type: 'addObject', kind: 'group', entries: [{ label: '', text: 't' }] });
   bad({ type: 'addEntry', groupId: 'nope', label: 'L', text: 't' });
   bad({ type: 'addEntry', groupId: g.id, label: 'L', text: 't', check: 'maybe' });
   bad({ type: 'updateEntry', groupId: g.id, entryId: entry.id, check: 'maybe' });
   bad({ type: 'updateEntry', groupId: g.id, entryId: 'nope' });
   bad({ type: 'moveEntry', entryId: entry.id, toGroupId: 'nope' });
+  const other = add(b, { kind: 'group', title: 'Other', x: 600, y: 0 });
+  bad({ type: 'moveEntry', entryId: entry.id, toGroupId: other.id, index: 'x' });
+  assert.deepEqual(g.entries, [entry]);
+  assert.equal(other.entries.length, 0);
   bad({ type: 'deleteEntry', groupId: g.id, entryId: 'nope' });
   bad({ type: 'addLink', from: g.id, to: g.id });
   bad({ type: 'addLink', from: g.id, to: 'nope' });
