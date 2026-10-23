@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OpError, applyOp, emptyBoard } from '../lib/board.mjs';
+import { OpError, applyOp, emptyBoard, migrateBoard } from '../lib/board.mjs';
 import { enforceRuledOut, findRuledOutMatches } from '../lib/memory.mjs';
 
 const page = (b) => b.brainstorm.pages[0];
@@ -197,4 +197,30 @@ test('enforceRuledOut re-applies records to restored content', () => {
   assert.equal(page(b).links.length, 0);
   assert.equal(node.status, 'rejected');
   assert.equal(b.ruledOut.length, 3);
+});
+
+test('a rejected v1 card migrates with one ruled-out record and can be brought back', () => {
+  const v1 = {
+    version: 3, title: 'Old',
+    nodes: [
+      { id: 'n_1', title: 'Kept', notes: '', props: [], status: 'accepted', author: 'user', x: 0, y: 0 },
+      { id: 'n_2', title: 'Pay to win', notes: '', props: [], status: 'rejected', author: 'claude', updatedBy: 'user', updatedAt: '2026-01-01T00:00:00.000Z', x: 1, y: 1 },
+    ],
+    edges: [],
+  };
+  const b = migrateBoard(v1);
+  assert.equal(b.ruledOut.length, 1);
+  const [record] = b.ruledOut;
+  assert.deepEqual(record.source, { view: 'flowchart', label: 'Pay to win', nodeId: 'n_2' });
+  assert.equal(record.text, 'Pay to win');
+  assert.equal(record.reason, '');
+  assert.equal(record.by, 'user');
+  assert.equal(record.at, '2026-01-01T00:00:00.000Z');
+  assert.equal(record.snapshot.id, 'n_2');
+  assert.match(record.id, /^r_/);
+  assert.equal(migrateBoard(structuredClone(b)).ruledOut.length, 1);
+  assert.equal(migrateBoard({ ...structuredClone(b), schema: undefined }).ruledOut.length, 1);
+  applyOp(b, { type: 'bringBack', id: record.id }, 'user');
+  assert.equal(b.flow.nodes[1].status, 'idea');
+  assert.deepEqual(b.ruledOut, []);
 });
