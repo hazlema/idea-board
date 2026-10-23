@@ -269,10 +269,22 @@
     };
   }
 
+  /** How tall a box is with no minimum height: what its content needs. */
+  function naturalHeight(id: string): number {
+    const el = document.querySelector<HTMLElement>(`[data-object-id="${CSS.escape(id)}"]`);
+    if (!el) return 0;
+    const minHeight = el.style.minHeight;
+    el.style.minHeight = '';
+    const h = el.offsetHeight;
+    el.style.minHeight = minHeight;
+    return h;
+  }
+
   function resizeFor(o: BObject, min: Size): ResizeOptions {
     return {
       min,
       scale: () => view.k,
+      natural: () => naturalHeight(o.id),
       onMove: (w, h) => {
         active = o.id;
         sized[o.id] = { w, h };

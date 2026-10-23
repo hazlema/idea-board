@@ -11,8 +11,7 @@
 </script>
 
 <script lang="ts">
-  import { Draft } from '$lib/draft.svelte';
-  import { live } from '$lib/live.svelte';
+  import LinkEditor from './LinkEditor.svelte';
   import type { BLink } from '$lib/types';
 
   interface Props {
@@ -24,24 +23,6 @@
   }
 
   let { lines, selected, onselect, ondelete }: Props = $props();
-
-  // The link whose label is being typed; saves go to it even if the selection moves on.
-  let editing: string | null = null;
-
-  const label = new Draft({
-    server: () => selected?.label ?? '',
-    save: (v) => (editing && live.board?.brainstorm.pages.some((p) => p.links.some((l) => l.id === editing)) ? live.send({ type: 'updateLink', id: editing, label: v }) : Promise.resolve({})),
-    delay: 400,
-  });
-
-  // A different link is selected: its own label shows.
-  let shownFor: string | null = null;
-  $effect(() => {
-    const id = selected?.id ?? null;
-    if (id === shownFor) return;
-    shownFor = id;
-    label.cancel();
-  });
 
   const selectedLine = $derived(lines.find((l) => l.id === selected?.id));
 </script>
@@ -96,35 +77,7 @@
 </svg>
 
 {#if selected && selectedLine}
-  <div
-    data-nopan
-    role="group"
-    aria-label="Link details"
-    class="absolute z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm shadow-lg"
-    style:left="{selectedLine.mid.x}px"
-    style:top="{selectedLine.mid.y + 14}px"
-  >
-    <input
-      type="text"
-      maxlength="200"
-      placeholder="Label"
-      aria-label="Link label"
-      class="w-32 rounded-md border border-line bg-ink px-2 py-0.5"
-      {...label.attrs}
-      onfocus={() => {
-        editing = selected?.id ?? null;
-        label.focus();
-      }}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' && !e.isComposing) e.currentTarget.blur();
-      }}
-    />
-    <label class="flex items-center gap-1 text-muted select-none">
-      <input type="checkbox" checked={selected.dashed} onclick={(e) => {
-        e.preventDefault();
-        void live.send({ type: 'updateLink', id: selected.id, dashed: !selected.dashed });
-      }} /> Dashed
-    </label>
-    <button type="button" class="rounded-md border border-line px-2 py-0.5 text-rose-400 hover:border-rose-400" onclick={() => ondelete(selected.id)}>Delete</button>
-  </div>
+  {#key selected.id}
+    <LinkEditor link={selected} at={selectedLine.mid} {ondelete} />
+  {/key}
 {/if}

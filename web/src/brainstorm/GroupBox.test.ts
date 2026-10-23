@@ -245,6 +245,37 @@ test('+ add item adds an entry once it has a label', async () => {
   expect(api.op).toHaveBeenCalledWith({ type: 'addEntry', groupId: 'o_wiz', label: 'Spells', text: '' });
 });
 
+test('a wiggle on the drag handle, or a drop back on its own row, moves nothing', async () => {
+  const g = onBoard(group([entry('en_a', 'Familiars', ''), entry('en_b', 'Magic', ''), entry('en_c', 'Towers', '')]));
+  render(GroupBox, { group: g });
+  const row = screen.getByTestId('entry-en_a');
+  // jsdom has no layout: whatever is "under the pointer" is the row being dragged.
+  document.elementFromPoint = () => row;
+  const handle = row.querySelector('[title^="Drag to reorder"]') as HTMLElement;
+
+  await fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+  await fireEvent.pointerMove(handle, { clientX: 11, clientY: 10, pointerId: 1 });
+  await fireEvent.pointerUp(handle, { clientX: 11, clientY: 10, pointerId: 1 });
+
+  await fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+  await fireEvent.pointerMove(handle, { clientX: 10, clientY: 30, pointerId: 1 });
+  await fireEvent.pointerUp(handle, { clientX: 10, clientY: 30, pointerId: 1 });
+  expect(api.op).not.toHaveBeenCalled();
+});
+
+test('dragging an entry onto another row sends moveEntry', async () => {
+  const g = onBoard(group([entry('en_a', 'Familiars', ''), entry('en_b', 'Magic', ''), entry('en_c', 'Towers', '')]));
+  render(GroupBox, { group: g });
+  const target = screen.getByTestId('entry-en_c');
+  document.elementFromPoint = () => target;
+  const handle = screen.getByTestId('entry-en_a').querySelector('[title^="Drag to reorder"]') as HTMLElement;
+  await fireEvent.pointerDown(handle, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+  // jsdom rows have no height, so any pointer below the row top counts as "after".
+  await fireEvent.pointerMove(handle, { clientX: 10, clientY: 40, pointerId: 1 });
+  await fireEvent.pointerUp(handle, { clientX: 10, clientY: 40, pointerId: 1 });
+  expect(api.op).toHaveBeenCalledWith({ type: 'moveEntry', entryId: 'en_a', toGroupId: 'o_wiz', index: 2 });
+});
+
 test('the ⋯ menu recolours and deletes the group', async () => {
   const g = onBoard(group([entry('en_a', 'Familiars', '')]));
   const ondelete = vi.fn();

@@ -16,7 +16,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import EntryRow, { entryDrop } from './EntryRow.svelte';
-  import { drag as dragAction, outside, resize as resizeAction, type DragOptions, type ResizeOptions } from '$lib/actions';
+  import { autogrow, drag as dragAction, outside, resize as resizeAction, type DragOptions, type ResizeOptions } from '$lib/actions';
   import { Draft } from '$lib/draft.svelte';
   import { live } from '$lib/live.svelte';
   import { findObject, type Entry, type Group } from '$lib/types';
@@ -37,7 +37,7 @@
   let { group, drag, resize, autofocus = false, onfocused, ondelete }: Props = $props();
 
   let root: HTMLDivElement | undefined = $state();
-  let titleInput: HTMLInputElement | undefined = $state();
+  let titleInput: HTMLTextAreaElement | undefined = $state();
   let menuOpen = $state(false);
   let adding = $state(false);
   let newLabel = $state('');
@@ -110,21 +110,26 @@
   class="gbox relative flex grow flex-col rounded-xl border shadow-lg {dropAtEnd ? 'outline-2 outline-dashed outline-accent' : ''}"
   style:--tint={TINTS[group.color]}
 >
-  <header use:dragAction={drag} class="ghead flex cursor-grab items-center gap-2 rounded-t-xl border-b px-3 pt-2 pb-1.5 select-none active:cursor-grabbing">
-    <span class="size-2.5 shrink-0 rounded-full" style:background="var(--tint)" aria-hidden="true"></span>
-    <input
+  <header use:dragAction={drag} class="ghead flex cursor-grab items-start gap-2 rounded-t-xl border-b px-3 pt-2 pb-1.5 select-none active:cursor-grabbing">
+    <span class="mt-[6px] size-2.5 shrink-0 rounded-full" style:background="var(--tint)" aria-hidden="true"></span>
+    <!-- A textarea so a long title wraps instead of hiding; Enter finishes it. -->
+    <textarea
       bind:this={titleInput}
-      type="text"
+      rows="1"
+      cols={Math.max(4, title.shown.length)}
       maxlength="200"
       placeholder="Untitled group"
       aria-label="Group title"
-      size={Math.max(4, title.shown.length)}
-      class="field-sizing-content max-w-full min-w-[4ch] rounded-sm bg-transparent p-0 text-[15px] font-bold outline-none focus:bg-ink/50"
+      class="field-sizing-content max-w-full min-w-[4ch] resize-none overflow-hidden rounded-sm bg-transparent p-0 text-[15px] leading-snug font-bold [overflow-wrap:anywhere] outline-none focus:bg-ink/50"
+      use:autogrow={title.shown}
       {...title.attrs}
+      oninput={(e) => title.input(e.currentTarget.value.replace(/\n/g, ' '))}
       onkeydown={(e) => {
-        if (e.key === 'Enter' && !e.isComposing) e.currentTarget.blur();
+        if (e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        e.currentTarget.blur();
       }}
-    />
+    ></textarea>
     <span class="flex-1"></span>
     <div class="relative" use:outside={() => (menuOpen = false)}>
       <button

@@ -161,6 +161,23 @@ test('the resize grip sends moveObject with w and h, never below the minimum', a
   expect(api.op).toHaveBeenCalledWith({ type: 'moveObject', id: 'o_note', w: 160, h: 200 });
 });
 
+test('a width-only resize keeps an auto-height box auto; dragging taller sets a height', async () => {
+  // Pretend every box lays out 150 px tall (its content) and starts 300 px wide.
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(150);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(300);
+  const { container } = render(BrainstormView);
+  const grip = box(container, 'o_wiz').querySelector('[data-no-drag]') as HTMLElement;
+  await fireEvent.pointerDown(grip, { button: 0, clientX: 0, clientY: 0, pointerId: 1 });
+  await fireEvent.pointerMove(grip, { clientX: 60, clientY: 0, pointerId: 1 });
+  await fireEvent.pointerUp(grip, { clientX: 60, clientY: 0, pointerId: 1 });
+  expect(api.op).toHaveBeenLastCalledWith({ type: 'moveObject', id: 'o_wiz', w: 360, h: 0 });
+
+  await fireEvent.pointerDown(grip, { button: 0, clientX: 0, clientY: 0, pointerId: 1 });
+  await fireEvent.pointerMove(grip, { clientX: 0, clientY: 50, pointerId: 1 });
+  await fireEvent.pointerUp(grip, { clientX: 0, clientY: 50, pointerId: 1 });
+  expect(api.op).toHaveBeenLastCalledWith({ type: 'moveObject', id: 'o_wiz', w: 300, h: 200 });
+});
+
 test('a pasted image is uploaded, added, and given a preview', async () => {
   vi.mocked(api.uploadPicture).mockResolvedValueOnce(ASSET).mockResolvedValueOnce(PREVIEW);
   vi.mocked(api.op).mockImplementation(async (o) => (o.type === 'addObject' ? { object: picture('o_pic', { preview: null }) } : {}));
@@ -235,6 +252,31 @@ test('a selected link can be relabelled, made dashed and deleted', async () => {
   expect(api.op).toHaveBeenCalledWith({ type: 'updateLink', id: 'l_1', dashed: true });
   await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   expect(api.op).toHaveBeenCalledWith({ type: 'deleteLink', id: 'l_1' });
+  vi.useRealTimers();
+});
+
+test('a link label typed just before choosing something else is still saved to that link', async () => {
+  vi.useFakeTimers();
+  live.board = boardWith(
+    [group('o_wiz', 'Wizards'), note('o_note', 'Scene', { x: 600 })],
+    [
+      { id: 'l_1', from: 'o_wiz', to: 'o_note', label: '', dashed: false, author: 'user' },
+      { id: 'l_2', from: 'o_note', to: 'o_wiz', label: 'other', dashed: false, author: 'user' },
+    ],
+  );
+  const { container } = render(BrainstormView);
+  await fireEvent.pointerDown(screen.getByRole('button', { name: 'Link' }));
+  const label = screen.getByLabelText('Link label');
+  label.focus();
+  await fireEvent.input(label, { target: { value: 'scene' } });
+  // Within the 400 ms pause, the user picks the other link, then a box.
+  await fireEvent.pointerDown(screen.getByRole('button', { name: 'Link: other' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.op).toHaveBeenCalledWith({ type: 'updateLink', id: 'l_1', label: 'scene' });
+  expect((screen.getByLabelText('Link label') as HTMLInputElement).value).toBe('other');
+  await fireEvent.pointerDown(box(container, 'o_note'), { button: 0 });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(api.op).toHaveBeenCalledTimes(1);
   vi.useRealTimers();
 });
 

@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { Group } from '$lib/types';
+
   /** Where a dragged entry would land: before or after `entryId`, or at the end of `groupId`. */
   export interface EntryDrop {
     dragging: string | null;
@@ -9,6 +11,24 @@
 
   /** Shared by every row and group, so the one under the pointer can show the drop line. */
   export const entryDrop: EntryDrop = $state({ dragging: null, groupId: null, entryId: null, after: false });
+
+  /**
+   * The moveEntry that puts `entryId` where it was dropped, or null when it would stay put
+   * (dropped on its own row, next to where it is, or on nothing).
+   */
+  export function entryMove(groups: Group[], entryId: string, drop: Omit<EntryDrop, 'dragging'>): { toGroupId: string; index?: number } | null {
+    if (drop.entryId === entryId) return null;
+    const target = groups.find((g) => g.id === drop.groupId);
+    if (!target) return null;
+    const from = target.entries.findIndex((e) => e.id === entryId);
+    if (!drop.entryId) return from === -1 || from !== target.entries.length - 1 ? { toGroupId: target.id } : null;
+    let index = target.entries.findIndex((e) => e.id === drop.entryId);
+    if (index === -1) return null;
+    if (drop.after) index += 1;
+    // The server takes the entry out before putting it back.
+    if (from !== -1 && from < index) index -= 1;
+    return index === from ? null : { toGroupId: target.id, index };
+  }
 </script>
 
 <script lang="ts">
@@ -17,7 +37,7 @@
   import { Draft } from '$lib/draft.svelte';
   import { firstLine } from '$lib/format';
   import { live } from '$lib/live.svelte';
-  import type { Check, Entry, Group } from '$lib/types';
+  import type { Check, Entry } from '$lib/types';
 
   interface Props {
     group: Group;
@@ -28,6 +48,12 @@
 
   let menuOpen = $state(false);
   let labelWidth = $state(0);
+  let columnWidth = $state(0);
+
+  const LABEL_GAP = 4;
+  // Room the text needs beside the label before the label moves to its own line.
+  const MIN_TEXT_ROOM = 48;
+  const stacked = $derived(columnWidth > 0 && labelWidth + LABEL_GAP + MIN_TEXT_ROOM > columnWidth);
   let textField: HTMLTextAreaElement | undefined = $state();
 
   /** The group that holds this entry now (it may have moved), or undefined once it is gone. */
@@ -96,41 +122,38 @@
 
   // ---- reordering: drag the handle onto another row or group ----
 
+  // Pointer travel before a drag counts, so a wiggle on the handle is not a move.
+  const DRAG_THRESHOLD = 4;
+
   function dropAt(clientX: number, clientY: number): void {
     const under = document.elementFromPoint(clientX, clientY);
     const row = under?.closest<HTMLElement>('[data-entry-id]');
     const box = under?.closest<HTMLElement>('[data-group-id]');
     entryDrop.groupId = box?.dataset.groupId ?? null;
-    entryDrop.entryId = row && row.dataset.entryId !== entry.id ? (row.dataset.entryId ?? null) : null;
+    // Over its own row, entryId is its own id: that means "stay put".
+    entryDrop.entryId = row?.dataset.entryId ?? null;
     entryDrop.after = row ? clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2 : false;
-  }
-
-  /** The moveEntry for where the entry was dropped, or null when it would stay put. */
-  function moveFor(drop: EntryDrop): { toGroupId: string; index?: number } | null {
-    const target = live.board?.brainstorm.pages.flatMap((p) => p.objects).find((o) => o.id === drop.groupId);
-    if (!target || target.kind !== 'group') return null;
-    const from = target.entries.findIndex((e) => e.id === entry.id);
-    if (!drop.entryId) return from === -1 || from !== target.entries.length - 1 ? { toGroupId: target.id } : null;
-    let index = target.entries.findIndex((e) => e.id === drop.entryId);
-    if (index === -1) return null;
-    if (drop.after) index += 1;
-    // The server takes the entry out before putting it back.
-    if (from !== -1 && from < index) index -= 1;
-    return index === from ? null : { toGroupId: target.id, index };
   }
 
   function startReorder(event: PointerEvent): void {
     if (event.button !== 0) return;
     event.preventDefault();
     const handle = event.currentTarget as HTMLElement;
+    const start = { x: event.clientX, y: event.clientY };
+    let dragging = false;
     handle.setPointerCapture?.(event.pointerId);
-    entryDrop.dragging = entry.id;
-    const move = (e: PointerEvent) => dropAt(e.clientX, e.clientY);
+    const move = (e: PointerEvent) => {
+      if (!dragging && Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) < DRAG_THRESHOLD) return;
+      dragging = true;
+      entryDrop.dragging = entry.id;
+      dropAt(e.clientX, e.clientY);
+    };
     const end = (e: PointerEvent) => {
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', end);
       handle.removeEventListener('pointercancel', end);
-      const drop = e.type === 'pointerup' ? moveFor($state.snapshot(entryDrop)) : null;
+      const groups = (live.board?.brainstorm.pages ?? []).flatMap((p) => p.objects).filter((o): o is Group => o.kind === 'group');
+      const drop = dragging && e.type === 'pointerup' ? entryMove(groups, entry.id, $state.snapshot(entryDrop)) : null;
       Object.assign(entryDrop, { dragging: null, groupId: null, entryId: null, after: false });
       if (drop) void live.send({ type: 'moveEntry', entryId: entry.id, ...drop });
     };
@@ -146,7 +169,7 @@
 <li
   data-entry-id={entry.id}
   data-testid="entry-{entry.id}"
-  class="group/row relative flex items-start gap-2 {entry.claudeAdded ? 'rounded-lg bg-orange-400/10 px-2 py-1.5' : ''} {entryDrop.dragging === entry.id ? 'opacity-40' : ''} {live.flash.has(entry.id) ? 'flash-claude' : ''}"
+  class="group/row relative flex items-start gap-2 {entry.claudeAdded ? 'rounded-lg bg-claude/10 px-2 py-1.5' : ''} {entryDrop.dragging === entry.id ? 'opacity-40' : ''} {live.flash.has(entry.id) ? 'flash-claude' : ''}"
   onpointerdown={point}
 >
   {#if dropHere}
@@ -165,30 +188,33 @@
   {/if}
 
   <div class="min-w-0 flex-1">
-    <!-- The label sits on the first line of the text, which is indented past it. -->
-    <div class="relative">
-      <div class="absolute top-0 left-0 z-10 flex max-w-full font-semibold" bind:offsetWidth={labelWidth}>
-        <input
-          type="text"
+    <!-- The label sits on the first line of the text, which is indented past it;
+         a label too long for that goes on its own lines above the text. -->
+    <div class="relative" bind:clientWidth={columnWidth}>
+      <div class="{stacked ? 'relative' : 'absolute top-0 left-0 z-10'} flex max-w-full items-end font-semibold" bind:offsetWidth={labelWidth}>
+        <textarea
+          rows="1"
+          cols={Math.max(2, label.shown.length)}
           maxlength="200"
           placeholder="Label"
           aria-label="Label"
-          size={Math.max(1, label.shown.length)}
-          class="field-sizing-content max-w-full min-w-[2ch] rounded-sm bg-transparent p-0 leading-[1.45] font-semibold outline-none focus:bg-ink/60"
+          class="field-sizing-content max-w-full min-w-[2ch] shrink resize-none overflow-hidden rounded-sm bg-transparent p-0 leading-[1.45] font-semibold [overflow-wrap:anywhere] outline-none focus:bg-ink/60"
+          use:autogrow={label.shown}
           {...label.attrs}
+          oninput={(e) => label.input(e.currentTarget.value.replace(/\n/g, ' '))}
           onfocus={() => {
             label.focus();
             point();
           }}
           onkeydown={labelKeydown}
-        /><span aria-hidden="true">:</span>
+        ></textarea><span class="shrink-0 {stacked ? 'invisible' : ''}" aria-hidden="true">:</span>
       </div>
       <textarea
         bind:this={textField}
         rows="1"
         aria-label="Text"
         class="block w-full resize-none overflow-hidden rounded-sm bg-transparent p-0 leading-[1.45] outline-none focus:bg-ink/60 {entry.check === 'done' ? 'text-green-300' : ''}"
-        style:text-indent="{labelWidth + 4}px"
+        style:text-indent={stacked ? undefined : `${labelWidth + LABEL_GAP}px`}
         use:autogrow={text.shown}
         {...text.attrs}
         onfocus={() => {

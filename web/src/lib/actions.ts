@@ -21,6 +21,12 @@ export interface DragOptions {
 export interface ResizeOptions {
   min: { w: number; h: number };
   scale: () => number;
+  /**
+   * The box's height with no minimum set: what its content needs. A height not
+   * taller than this is sent as 0 ("fit the content"), so a width-only drag
+   * never pins the height and the box can still shrink when content goes.
+   */
+  natural?: () => number;
   /** Live size while the grip is held. */
   onMove?: (w: number, h: number) => void;
   /** Called on release, only if the size changed. */
@@ -90,11 +96,14 @@ export function resize(node: HTMLElement, options: ResizeOptions | undefined): A
     const { min, onMove, onEnd } = current;
     const box = node.parentElement;
     const start = { w: box?.offsetWidth ?? 0, h: box?.offsetHeight ?? 0 };
+    const natural = current.natural?.() ?? 0;
     const k = current.scale();
-    const size = (dx: number, dy: number) => ({
-      w: Math.max(min.w, Math.round(start.w + dx / k)),
-      h: Math.max(min.h, Math.round(start.h + dy / k)),
-    });
+    const height = (dy: number): number => {
+      const h = Math.round(start.h + dy / k);
+      if (h > natural + 1) return Math.max(min.h, h);
+      return natural >= min.h ? 0 : min.h;
+    };
+    const size = (dx: number, dy: number) => ({ w: Math.max(min.w, Math.round(start.w + dx / k)), h: height(dy) });
     follow(
       node,
       event,
