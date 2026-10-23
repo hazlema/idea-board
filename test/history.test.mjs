@@ -315,3 +315,65 @@ test('describeOp names what changed', () => {
   assert.equal(run({ type: 'addNode', title: long, x: 0, y: 0 }), `added card “${'x'.repeat(39)}…”`);
   assert.equal(describeOp({ type: 'deleteNode', id: 'gone' }, {}, b, 'user'), 'deleted card “untitled”');
 });
+
+test('a line cut short by a crash does not swallow the next entry', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'h.history.jsonl');
+  const entry = (log, n) => log.record({ author: 'claude', turn: 't_00000000', op: 'addNode', summary: `s${n}`, changes: [] });
+  const first = new HistoryLog(file);
+  entry(first, 1);
+  entry(first, 2);
+  fs.appendFileSync(file, '{"seq":3,"at":"2026-');
+  const second = new HistoryLog(file);
+  assert.deepEqual(second.entries().map((e) => e.seq), [1, 2]);
+  entry(second, 3);
+  assert.deepEqual(new HistoryLog(file).entries().map((e) => e.summary), ['s1', 's2', 's3']);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('redo brings back a reply undone by mistake, until the user edits again', () => withStore((store) => {
+  const { node } = store.apply({ type: 'addNode', title: 'Claude card', x: 0, y: 0 }, 'claude');
+  const turn = lastTurn(store);
+  const has = () => store.board.flow.nodes.some((n) => n.id === node.id);
+  store.undoTurn(turn);
+  assert.equal(has(), false);
+  assert.equal(store.redo().undone.op, 'undoTurn');
+  assert.equal(has(), true);
+  const rows = store.history().entries;
+  assert.equal(rows.find((r) => r.op === 'addNode').undone, false);
+  assert.equal(rows.find((r) => r.op === 'undoTurn').undone, true);
+  assert.equal(store.redo().undone, null);
+  // the reply can be undone again, and a new edit after that blocks redo
+  assert.equal(store.undoTurn(turn).undone, 1);
+  store.apply({ type: 'setTitle', title: 'new edit' }, 'user');
+  assert.equal(store.redo().undone, null);
+  assert.equal(has(), false);
+}));
+
+test('redo of a reply survives a restart', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'board.json');
+  const a = new BoardStore(file);
+  const { node } = a.apply({ type: 'addNode', title: 'Claude card', x: 0, y: 0 }, 'claude');
+  a.undoTurn(lastTurn(a));
+  const b = new BoardStore(file);
+  b.redo();
+  assert.ok(b.board.flow.nodes.some((n) => n.id === node.id));
+  assert.equal(new BoardStore(file).redo().undone, null);
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('automatic picture previews record no history and do not block undo', () => withStore((store) => {
+  const asset = `${'a'.repeat(32)}.png`;
+  const preview = `${'b'.repeat(32)}.webp`;
+  const { object: pic } = store.apply({ type: 'addObject', kind: 'picture', asset, caption: 'Map' }, 'user');
+  const before = store.history().entries;
+  store.apply({ type: 'setPicturePreview', id: pic.id, preview }, 'user');
+  assert.deepEqual(store.history().entries, before);
+  store.apply({ type: 'updateObject', id: pic.id, caption: 'World map' }, 'user');
+  store.undo();
+  assert.equal(object(store.board, pic.id).caption, 'Map');
+  assert.equal(object(store.board, pic.id).preview, preview);
+  assert.deepEqual(store.undo().skipped, []);
+  assert.equal(object(store.board, pic.id), undefined);
+}));
