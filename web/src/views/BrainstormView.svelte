@@ -374,7 +374,7 @@
       <div
         data-nopan
         data-object-id={o.id}
-        class="absolute flex flex-col {outline(o)} {isSelected ? 'outline-2 outline-offset-2 outline-accent' : ''} {linking?.from === o.id ? 'outline-2 outline-offset-2 outline-dashed outline-accent' : ''} {active === o.id ? 'z-20' : isSelected ? 'z-10' : ''} {live.flash.has(o.id) ? 'flash-claude' : ''} {linking ? 'cursor-crosshair' : ''}"
+        class="absolute isolate flex flex-col {outline(o)} {isSelected ? 'outline-2 outline-offset-2 outline-accent' : ''} {linking?.from === o.id ? 'outline-2 outline-offset-2 outline-dashed outline-accent' : ''} {active === o.id ? 'z-20' : isSelected ? 'z-10' : ''} {live.flash.has(o.id) ? 'flash-claude' : ''} {linking ? 'cursor-crosshair' : ''}"
         style:left="{pos.x}px"
         style:top="{pos.y}px"
         style:width={size.w ? `${size.w}px` : undefined}

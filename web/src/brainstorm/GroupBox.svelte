@@ -107,7 +107,7 @@
 <div
   bind:this={root}
   data-group-id={group.id}
-  class="gbox relative flex flex-1 flex-col rounded-xl border shadow-lg {dropAtEnd ? 'outline-2 outline-dashed outline-accent' : ''}"
+  class="gbox relative flex grow flex-col rounded-xl border shadow-lg {dropAtEnd ? 'outline-2 outline-dashed outline-accent' : ''}"
   style:--tint={TINTS[group.color]}
 >
   <header use:dragAction={drag} class="ghead flex cursor-grab items-center gap-2 rounded-t-xl border-b px-3 pt-2 pb-1.5 select-none active:cursor-grabbing">

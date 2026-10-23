@@ -95,6 +95,42 @@ test('after focus leaves, an entry shows the server value again', async () => {
   expect(text.value).toBe('Claude rewrote it');
 });
 
+test('a change Claude made while you were typing shows once focus leaves (your text was already saved)', async () => {
+  const g = onBoard(group([entry('en_magic', 'Magic', 'shields')]));
+  const { rerender } = render(GroupBox, { group: g });
+  const text = screen.getByDisplayValue('shields') as HTMLTextAreaElement;
+  text.focus();
+  await fireEvent.input(text, { target: { value: 'shields and wards' } });
+  await vi.advanceTimersByTimeAsync(600);
+  expect(api.op).toHaveBeenCalledTimes(1);
+
+  await rerender({ group: onBoard(group([entry('en_magic', 'Magic', 'shields and wards')])) });
+  await rerender({ group: onBoard(group([entry('en_magic', 'Magic', 'Claude rewrote it')])) });
+  expect(text.value).toBe('shields and wards');
+  text.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(text.value).toBe('Claude rewrote it');
+  expect(api.op).toHaveBeenCalledTimes(1);
+});
+
+test('a failed save keeps the typing and tries again when focus next leaves', async () => {
+  const g = onBoard(group([entry('en_magic', 'Magic', 'shields')]));
+  vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server'));
+  render(GroupBox, { group: g });
+  const text = screen.getByDisplayValue('shields') as HTMLTextAreaElement;
+  text.focus();
+  await fireEvent.input(text, { target: { value: 'shields and wards' } });
+  text.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(text.value).toBe('shields and wards');
+
+  text.focus();
+  text.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.op).toHaveBeenCalledTimes(2);
+  expect(api.op).toHaveBeenLastCalledWith({ type: 'updateEntry', groupId: 'o_wiz', entryId: 'en_magic', text: 'shields and wards' });
+});
+
 test('Keep and Dismiss send keep and ruleOut', async () => {
   const g = onBoard(group([entry('en_duel', 'Staff duels', 'ritual duels', { author: 'claude', claudeAdded: true })]));
   render(GroupBox, { group: g });

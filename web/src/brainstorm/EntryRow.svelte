@@ -164,37 +164,39 @@
     <input type="checkbox" class="mt-[3px] shrink-0 cursor-pointer accent-green-500" aria-label="Agreed" checked={entry.check === 'done'} onclick={toggle} />
   {/if}
 
-  <div class="relative min-w-0 flex-1">
+  <div class="min-w-0 flex-1">
     <!-- The label sits on the first line of the text, which is indented past it. -->
-    <div class="absolute top-0 left-0 z-10 flex max-w-full font-semibold" bind:offsetWidth={labelWidth}>
-      <input
-        type="text"
-        maxlength="200"
-        placeholder="Label"
-        aria-label="Label"
-        size={Math.max(1, label.shown.length)}
-        class="field-sizing-content max-w-full min-w-[2ch] rounded-sm bg-transparent p-0 leading-[1.45] font-semibold outline-none focus:bg-ink/60"
-        {...label.attrs}
+    <div class="relative">
+      <div class="absolute top-0 left-0 z-10 flex max-w-full font-semibold" bind:offsetWidth={labelWidth}>
+        <input
+          type="text"
+          maxlength="200"
+          placeholder="Label"
+          aria-label="Label"
+          size={Math.max(1, label.shown.length)}
+          class="field-sizing-content max-w-full min-w-[2ch] rounded-sm bg-transparent p-0 leading-[1.45] font-semibold outline-none focus:bg-ink/60"
+          {...label.attrs}
+          onfocus={() => {
+            label.focus();
+            point();
+          }}
+          onkeydown={labelKeydown}
+        /><span aria-hidden="true">:</span>
+      </div>
+      <textarea
+        bind:this={textField}
+        rows="1"
+        aria-label="Text"
+        class="block w-full resize-none overflow-hidden rounded-sm bg-transparent p-0 leading-[1.45] outline-none focus:bg-ink/60 {entry.check === 'done' ? 'text-green-300' : ''}"
+        style:text-indent="{labelWidth + 4}px"
+        use:autogrow={text.shown}
+        {...text.attrs}
         onfocus={() => {
-          label.focus();
+          text.focus();
           point();
         }}
-        onkeydown={labelKeydown}
-      /><span aria-hidden="true">:</span>
+      ></textarea>
     </div>
-    <textarea
-      bind:this={textField}
-      rows="1"
-      aria-label="Text"
-      class="block w-full resize-none overflow-hidden rounded-sm bg-transparent p-0 leading-[1.45] outline-none focus:bg-ink/60 {entry.check === 'done' ? 'text-green-300' : ''}"
-      style:text-indent="{labelWidth + 4}px"
-      use:autogrow={text.shown}
-      {...text.attrs}
-      onfocus={() => {
-        text.focus();
-        point();
-      }}
-    ></textarea>
     {#if entry.claudeAdded}
       <ClaudeMark variant="entry" onkeep={() => void live.send({ type: 'keep', id: group.id, entryId: entry.id })} ondismiss={sendRuleOut} />
     {/if}

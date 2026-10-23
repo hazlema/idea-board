@@ -3,8 +3,9 @@
 //
 // The field shows the draft while there is one, else the server's value. A
 // draft is saved after a pause, and at once when focus leaves (or the
-// component goes away). It is dropped once focus has left and the save is
-// done, as soon as the server shows the saved value or moves on from it.
+// component goes away). Once focus has left and the save has landed, the
+// draft is dropped and the field shows the board again (a failed save keeps
+// the typing on screen and is retried the next time focus leaves).
 //
 // Create it during component setup: it ties itself to the component's life.
 import { onDestroy, untrack } from 'svelte';
@@ -77,10 +78,19 @@ export class Draft {
 
   async blur(): Promise<void> {
     this.#focused = false;
-    await this.flush();
+    this.#clearTimer();
+    const saved = await this.#save();
     if (this.#value === null || this.#focused) return;
-    // Not saveable, or saved and already on the board: show the board again.
-    if (!this.#valid(this.#value) || (this.#settled() && same(this.#value, this.#options.server()))) this.#value = null;
+    if (!this.#valid(this.#value)) {
+      // Not saveable: show the board's value again.
+      this.#value = null;
+      return;
+    }
+    // A failed save keeps the typing; a save still on its way is settled when it lands.
+    if (this.#dirty || this.#timer !== null || this.#inFlight > 0) return;
+    // Saved earlier: the board is the truth now, even if someone changed it since.
+    // Saved just now: wait for the board to show it, so the old value doesn't flash up.
+    if (!saved || same(this.#value, this.#options.server())) this.#value = null;
   }
 
   /** Saves a waiting edit now. */
@@ -110,11 +120,12 @@ export class Draft {
     this.#timer = null;
   }
 
-  async #save(): Promise<void> {
+  /** Sends the draft if it has unsaved typing. Resolves true when something was sent. */
+  async #save(): Promise<boolean> {
     const value = this.#value;
-    if (value === null || !this.#dirty) return;
+    if (value === null || !this.#dirty) return false;
     this.#dirty = false;
-    if (!this.#valid(value)) return;
+    if (!this.#valid(value)) return false;
     this.#inFlight += 1;
     let result: unknown;
     try {
@@ -124,5 +135,7 @@ export class Draft {
     }
     // A failed save keeps the typing on screen and tries again when focus next leaves.
     if (result === null && this.#value === value) this.#dirty = true;
+    else if (this.#settled() && this.#value !== null && same(this.#value, this.#options.server())) this.#value = null;
+    return true;
   }
 }

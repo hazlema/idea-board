@@ -62,7 +62,7 @@
 </script>
 
 <!-- Dragged by the picture itself or the frame around it. -->
-<div use:dragAction={drag} class="relative flex flex-1 cursor-grab flex-col rounded-xl border border-line bg-panel p-2 shadow-lg active:cursor-grabbing">
+<div use:dragAction={drag} class="relative flex grow cursor-grab flex-col rounded-xl border border-line bg-panel p-2 shadow-lg active:cursor-grabbing">
   <div class="px-0.5 pb-1.5 text-xs text-muted select-none" aria-hidden="true">⠿</div>
   <img src="/assets/{picture.asset}" alt={picture.caption || 'Picture'} draggable="false" class="block h-auto w-full rounded-md bg-ink select-none" />
   <textarea

@@ -48,7 +48,7 @@
 <!-- Dragged by the strip along the top or the paper around the text. -->
 <div
   use:dragAction={drag}
-  class="note relative flex flex-1 cursor-grab flex-col rounded-xl border px-3.5 pt-4 pb-3 text-[#2b2a24] shadow-lg active:cursor-grabbing"
+  class="note relative flex grow cursor-grab flex-col rounded-xl border px-3.5 pt-4 pb-3 text-[#2b2a24] shadow-lg active:cursor-grabbing"
   style:background={paper.bg}
   style:border-color={paper.edge}
 >
@@ -58,7 +58,7 @@
     rows="2"
     placeholder="Write a note…"
     aria-label="Note"
-    class="block w-full flex-1 cursor-text resize-none overflow-hidden bg-transparent p-0 leading-[1.45] whitespace-pre-wrap outline-none placeholder:text-[#2b2a24]/45"
+    class="block w-full shrink-0 grow cursor-text resize-none overflow-hidden bg-transparent p-0 leading-[1.45] whitespace-pre-wrap outline-none placeholder:text-[#2b2a24]/45"
     use:autogrow={text.shown}
     {...text.attrs}
   ></textarea>
