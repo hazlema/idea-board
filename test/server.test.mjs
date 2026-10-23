@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
 import { browserCommand } from '../server.mjs';
+import { Library } from '../lib/colab/library.mjs';
+import { ColabRun } from '../lib/colab/run.mjs';
 
 test('MCP initialize and tools/list', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
@@ -227,4 +229,95 @@ test('the browser opens with each platform\'s own command', () => {
   assert.deepEqual(browserCommand('darwin', url), { command: 'open', args: [url] });
   assert.deepEqual(browserCommand('win32', url), { command: 'cmd', args: ['/c', 'start', '', url] });
   assert.deepEqual(browserCommand('linux', url), { command: 'xdg-open', args: [url] });
+});
+
+// A real ColabRun on the test's store, with a fake OpenRouter that never touches the network.
+const SECRET = 'sk-or-test-secret-123';
+function colabFor({ key = SECRET, complete = async () => ({ message: { role: 'assistant', content: 'hello' }, cost: 0.1 }), models } = {}) {
+  const calls = [];
+  const factory = (store, presence) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-'));
+    const openrouter = { hasKey: () => Boolean(key), models: models ?? (async () => [{ id: 'acme/alpha-one' }]), complete: async (req) => { calls.push(req); return complete(req); } };
+    return new ColabRun({ store, presence, library: new Library(path.join(dir, 'colab.json')), openrouter });
+  };
+  return { factory, calls };
+}
+const LINEUP = { type: 'setColabLineup', agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1 };
+const post = (base, route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+
+test('GET /api/colab reports hasKey and never the key itself', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base }) => {
+    const text = await (await fetch(`${base}/api/colab`)).text();
+    assert.ok(!text.includes(SECRET));
+    const body = JSON.parse(text);
+    assert.equal(body.hasKey, true);
+    assert.equal(body.status.state, 'idle');
+    assert.ok(body.library.roles.length > 0);
+    const models = await (await fetch(`${base}/api/colab/models`)).text();
+    assert.ok(!models.includes(SECRET));
+  }, { colab: factory });
+  const none = colabFor({ key: null });
+  await withServer(async ({ base }) => {
+    assert.equal((await (await fetch(`${base}/api/colab`)).json()).hasKey, false);
+    assert.equal((await post(base, '/api/colab/start')).status, 400);
+  }, { colab: none.factory });
+});
+
+test('models failure answers 502', async () => {
+  const { factory } = colabFor({ models: async () => { throw new Error('offline'); } });
+  await withServer(async ({ base }) => {
+    const res = await fetch(`${base}/api/colab/models`);
+    assert.equal(res.status, 502);
+    assert.equal((await res.json()).error, 'offline');
+  }, { colab: factory });
+});
+
+test('setColabLineup saves, is not in history, and rejects bad numbers', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base, userOp, store }) => {
+    assert.equal((await userOp(LINEUP)).status, 200);
+    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1 });
+    assert.equal((await userOp({ type: 'setColabExtras', rules: 'be kind', roles: { creative: 'wild' } })).status, 200);
+    assert.equal(store.board.colab.extras.rules, 'be kind');
+    assert.equal((await (await fetch(`${base}/api/history`)).json()).entries.length, 0);
+    assert.equal((await userOp({ ...LINEUP, rounds: 51 })).status, 400);
+    assert.equal((await userOp({ ...LINEUP, budget: 0.01 })).status, 400);
+    assert.equal((await userOp({ ...LINEUP, agents: Array(9).fill(LINEUP.agents[0]) })).status, 400);
+  }, { colab: factory });
+});
+
+test('the library round-trips and rejects duplicate role ids', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base }) => {
+    const put = (body) => fetch(`${base}/api/colab/library`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const lib = { rules: 'r', roles: [{ id: 'a', name: 'A', job: 'j' }] };
+    assert.equal((await put(lib)).status, 200);
+    assert.deepEqual((await (await fetch(`${base}/api/colab`)).json()).library, lib);
+    assert.equal((await put({ rules: 'r', roles: [lib.roles[0], lib.roles[0]] })).status, 400);
+  }, { colab: factory });
+});
+
+test('a waiting run refuses a new line-up and a second start; a user chat starts round 1', async () => {
+  const { factory, calls } = colabFor();
+  await withServer(async ({ base, userOp, colab }) => {
+    await userOp(LINEUP);
+    assert.equal((await post(base, '/api/colab/start')).status, 200);
+    assert.equal((await post(base, '/api/colab/start')).status, 409);
+    assert.equal((await userOp(LINEUP)).status, 409);
+    assert.equal(calls.length, 0);
+    await userOp({ type: 'chat', text: 'go' });
+    await colab.finished;
+    assert.ok(calls.length > 0);
+    assert.equal(colab.status.state, 'idle');
+  }, { colab: factory });
+});
+
+test('start with an empty line-up is 400 and stop returns idle', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base }) => {
+    assert.equal((await post(base, '/api/colab/start')).status, 400);
+    await post(base, '/api/colab/stop');
+    assert.equal((await (await fetch(`${base}/api/colab`)).json()).status.state, 'idle');
+  }, { colab: factory });
 });

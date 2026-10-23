@@ -207,3 +207,14 @@ test('recoverAfterRestart reports a cut-short run and clears it', () => {
   assert.match(store.board.chat.at(-1).text, /after round 2; \$0\.61 spent/);
   assert.equal(store.board.colab.run, null);
 });
+
+test('entering running saves the run at once, so a restart during turn one is noticed', async () => {
+  let seen;
+  const { store, run } = setup({ complete: async () => { seen ??= structuredClone(store.board.colab.run); return text('done'); } });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  assert.deepEqual(store.board.colab.run, { round: 1, spent: 0 });
+  await run.finished;
+  assert.deepEqual(seen, { round: 1, spent: 0 });
+});

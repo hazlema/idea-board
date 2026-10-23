@@ -7,11 +7,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_ASSET_BYTES } from './lib/assets.mjs';
-import { OpError } from './lib/board.mjs';
+import { ConflictError, OpError } from './lib/board.mjs';
 import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence } from './lib/mcp.mjs';
 import { Agent } from './lib/agent.mjs';
+import { Library, libraryFile } from './lib/colab/library.mjs';
+import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
+import { ColabRun } from './lib/colab/run.mjs';
 
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -79,7 +82,35 @@ function sendJson(res, status, value) {
   res.end(JSON.stringify(value));
 }
 
-export function createServer({ store, agent, presence, port, distDir = DIST_DIR }) {
+// The /api/colab routes. Returns false for a path it does not own.
+async function colabRoute(run, pathname, req, res) {
+  const { library, openrouter } = run;
+  const fail = (error) => {
+    if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
+    throw error;
+  };
+  if (pathname === '/api/colab' && req.method === 'GET') {
+    sendJson(res, 200, { status: run.status, hasKey: openrouter.hasKey(), library: library.get() });
+  } else if (pathname === '/api/colab/models' && req.method === 'GET') {
+    try { sendJson(res, 200, { models: await openrouter.models() }); }
+    catch (error) { sendJson(res, 502, { error: error.message }); }
+  } else if (pathname === '/api/colab/library' && req.method === 'PUT') {
+    const body = (await readBody(req)) ?? {};
+    try { sendJson(res, 200, { library: library.save({ rules: body.rules, roles: body.roles }) }); }
+    catch (error) { fail(error); }
+  } else if (pathname === '/api/colab/start' && req.method === 'POST') {
+    if (run.status.state !== 'idle') return sendJson(res, 409, { error: 'an agent run is already in progress' }), true;
+    if (!openrouter.hasKey()) return sendJson(res, 400, { error: 'No OpenRouter key found. Set OPENROUTER_API_KEY or put the key in ~/.config/openrouter/key, then restart.' }), true;
+    try { run.start(); sendJson(res, 200, { status: run.status }); }
+    catch (error) { fail(error); }
+  } else if (pathname === '/api/colab/stop' && req.method === 'POST') {
+    run.stop();
+    sendJson(res, 200, { status: run.status });
+  } else return false;
+  return true;
+}
+
+export function createServer({ store, agent, presence, colab, port, distDir = DIST_DIR }) {
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   const mcp = createMcpHandler(createToolRunner(store, presence));
@@ -120,13 +151,22 @@ export function createServer({ store, agent, presence, port, distDir = DIST_DIR 
       if (url.pathname === '/api/op' && req.method === 'POST') {
         const { op } = (await readBody(req)) ?? {};
         try {
+          if (op?.type === 'setColabLineup' && colab && colab.status.state !== 'idle') throw new ConflictError('a run is in progress');
           const result = store.apply(op, 'user');
-          if (op.type === 'chat') agent?.nudge();
+          if (op.type === 'chat') {
+            agent?.nudge();
+            colab?.onUserMessage();
+          }
           return sendJson(res, 200, result);
         } catch (error) {
-          if (error instanceof OpError) return sendJson(res, 400, { error: error.message });
+          if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
           throw error;
         }
+      }
+
+      if (colab && url.pathname.startsWith('/api/colab')) {
+        const handled = await colabRoute(colab, url.pathname, req, res);
+        if (handled) return;
       }
 
       if (url.pathname === '/api/undo' && req.method === 'POST') return sendJson(res, 200, store.undo());
@@ -256,8 +296,14 @@ function main() {
   const store = new BoardStore(options.file);
   const presence = new Presence(store);
   const mcpUrl = `http://${HOST}:${options.port}/mcp`;
-  const agent = options.agent ? new Agent(store, presence, { mcpUrl, cwd: path.dirname(store.file) }) : null;
-  const server = createServer({ store, agent, presence, port: options.port });
+  const library = new Library(libraryFile());
+  const openrouter = new OpenRouter({ key: () => readKey() });
+  const colab = new ColabRun({ store, presence, library, openrouter });
+  const agent = options.agent ? new Agent(store, presence, { mcpUrl, cwd: path.dirname(store.file), quiet: () => colab.status.state !== 'idle' }) : null;
+  // When a run ends, a user message the background agent held back is answered.
+  store.subscribe((event) => { if (event.type === 'colab' && event.status.state === 'idle') agent?.nudge(); });
+  colab.recoverAfterRestart();
+  const server = createServer({ store, agent, presence, colab, port: options.port });
   server.on('error', (error) => {
     console.error(error.code === 'EADDRINUSE' ? `Port ${options.port} is in use. Try --port <other>.` : error.message);
     process.exit(1);
