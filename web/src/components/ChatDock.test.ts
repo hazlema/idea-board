@@ -11,6 +11,7 @@ import { preview } from '../memory/preview.svelte';
 import type { VersionMeta } from '$lib/types';
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(api.op).mockClear();
   live.board = emptyBoard();
   live.pointing = null;
@@ -100,4 +101,27 @@ test('chat waits while a version is being previewed', async () => {
   await waitFor(() => expect(screen.getByPlaceholderText(/tell claude/i)).toBeEnabled());
   await fireEvent.keyDown(screen.getByPlaceholderText(/tell claude/i), { key: 'Enter' });
   await waitFor(() => expect(api.op).toHaveBeenCalledWith({ type: 'chat', text: 'hello', context: undefined }));
+});
+
+test('the Chat toggle hides the messages, keeps the input, and is remembered', async () => {
+  live.board = emptyBoard();
+  live.board.chat = [{ id: 'm_1', role: 'user', text: 'What about wizards?', at: '2026-10-22T10:00:00.000Z', handled: true }];
+  const first = render(ChatDock);
+  const toggle = screen.getByRole('button', { name: /Chat/ });
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByText('What about wizards?')).toBeVisible();
+
+  await fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByText('What about wizards?')).not.toBeVisible();
+  expect(screen.getByPlaceholderText(/tell claude/i)).toBeVisible();
+
+  first.unmount();
+  render(ChatDock);
+  const again = screen.getByRole('button', { name: /Chat/ });
+  expect(again).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByText('What about wizards?')).not.toBeVisible();
+  await fireEvent.click(again);
+  expect(screen.getByText('What about wizards?')).toBeVisible();
+  expect(localStorage.getItem('idea-board-chat-collapsed')).toBeNull();
 });

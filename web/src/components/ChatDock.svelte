@@ -4,6 +4,7 @@
   import { preview } from '../memory/preview.svelte';
 
   const MAX_LABEL = 200;
+  const COLLAPSED_KEY = 'idea-board-chat-collapsed';
   const PLACEHOLDER = "Tell Claude what you're thinking… (Enter to send, Shift+Enter for a new line)";
 
   // Chat would change the live board, so it waits while an old version is being looked at.
@@ -11,6 +12,26 @@
 
   let draft = $state('');
   let log: HTMLDivElement | undefined = $state();
+  // Collapsed shows only the input row, so the canvas gets the room back. Remembered across visits.
+  let collapsed = $state(savedCollapsed());
+
+  function savedCollapsed(): boolean {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function toggleCollapsed(): void {
+    collapsed = !collapsed;
+    try {
+      if (collapsed) localStorage.setItem(COLLAPSED_KEY, '1');
+      else localStorage.removeItem(COLLAPSED_KEY);
+    } catch {
+      // Private mode: the choice just won't be remembered.
+    }
+  }
 
   type Item = { at: string; key: string; message?: ChatMessage; notice?: string };
 
@@ -28,9 +49,10 @@
     return '';
   });
 
-  // Keep the newest message in view.
+  // Keep the newest message in view (also when the list is opened again).
   $effect(() => {
     void items.length;
+    void collapsed;
     if (log) log.scrollTop = log.scrollHeight;
   });
 
@@ -58,7 +80,18 @@
 </script>
 
 <section class="flex flex-col border-t border-line bg-panel" aria-label="Chat with Claude">
-  <div bind:this={log} class="flex max-h-48 min-h-0 flex-col gap-2 overflow-y-auto px-4 py-2">
+  <div class="flex h-7 items-center gap-3 px-4 pt-1 text-xs">
+    <button
+      type="button"
+      class="font-medium text-muted hover:text-text"
+      aria-expanded={!collapsed}
+      aria-controls="chat-log"
+      title={collapsed ? 'Show the chat messages' : 'Hide the chat messages'}
+      onclick={toggleCollapsed}>{collapsed ? '▸' : '▾'} Chat</button>
+    <span class={live.agent === 'working' ? 'text-claude' : 'text-muted'} aria-live="polite">{status}</span>
+  </div>
+
+  <div bind:this={log} id="chat-log" hidden={collapsed} class="flex max-h-48 min-h-0 flex-col gap-2 overflow-y-auto px-4 py-2">
     {#each items as item (item.key)}
       {#if item.message}
         {@const message = item.message}
@@ -77,9 +110,7 @@
     {/each}
   </div>
 
-  <div class="h-5 px-4 text-xs {live.agent === 'working' ? 'text-claude' : 'text-muted'}" aria-live="polite">{status}</div>
-
-  <div class="flex flex-col gap-1.5 px-4 pb-3">
+  <div class="flex flex-col gap-1.5 px-4 pt-1 pb-3">
     {#if live.pointing}
       {@const pointing = live.pointing}
       <div class="flex w-fit max-w-full items-center gap-1.5 rounded-full border border-line bg-raised px-2.5 py-0.5 text-xs">
