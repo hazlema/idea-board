@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
-import { BOARD_SERVER, proxiedOrigin } from './web/devProxy';
+import { BOARD_SERVER, proxiedOrigin } from './web/devProxy.ts';
 
 // The board server rejects requests whose Origin is not its own: the dev page's
 // requests are passed on with the board server's origin, any other site's as they are.
