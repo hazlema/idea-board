@@ -189,12 +189,14 @@ Then in any Claude Code session in that project, Claude has these tools:
 | Brainstorm | `add_group`, `update_group`, `add_entry`, `update_entry`, `move_entry`, `delete_entry`, `add_note`, `update_note`, `add_topic`, `update_topic`, `add_picture_from_url`, `update_picture`, `move_object` (move or resize), `delete_object`, `link`, `update_link`, `unlink` |
 | Flowchart | `add_node`, `update_node`, `delete_node`, `connect`, `update_connection`, `disconnect`, `tidy_layout` |
 | Memory | `rule_out`, `bring_back`, `undo_reply`, `save_version`, `restore_version` |
-| Other | `rename_board`, `export_design_doc`, `reply`, `wait_for_chat` |
+| Other | `rename_board`, `export_design_doc`, `reply`, `wait_for_chat`, `batch` (several tools in one call; `"$0.id"` reuses an id an earlier call returned) |
 
 **Live mode:** ask Claude to "listen to the board chat". It loops on
 `wait_for_chat` (a long poll), so your board messages go straight to that
-session instead of a background Claude. If the session stops listening for
-five minutes, the background Claude takes over again.
+session instead of a background Claude. Each wait also lists what you
+changed on the board since Claude last looked, so it can react to edits you
+didn't mention in chat. If the session stops listening for five minutes, the
+background Claude takes over again.
 
 ## Safety
 

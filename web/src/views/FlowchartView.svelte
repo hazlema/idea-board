@@ -130,7 +130,9 @@
   async function tidy(): Promise<void> {
     if (!live.board) return;
     fitAfter = live.board.version;
-    if ((await live.send({ type: 'tidy' })) === null) fitAfter = null;
+    // Measured heights let Tidy space the rows by each card's real size.
+    const heights = Object.fromEntries(Object.entries(sizes).map(([id, size]) => [id, size.h]));
+    if ((await live.send({ type: 'tidy', heights })) === null) fitAfter = null;
   }
 
   // ---- selection ----
