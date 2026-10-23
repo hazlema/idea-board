@@ -162,9 +162,9 @@
             onfocus={() => onFocus(section, 'title')}
             onblur={() => onBlur(section, 'title')}
           />
-          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-text" title="Move up" aria-label="Move up" disabled={i === 0} onclick={() => move(section, -1)}>↑</button>
-          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-text" title="Move down" aria-label="Move down" disabled={i === sections.length - 1} onclick={() => move(section, 1)}>↓</button>
-          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-rose-400" title="Remove this box" aria-label="Remove this box" onclick={() => remove(section)}>×</button>
+          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-text" title="Move up" aria-label="Move up" disabled={i === 0} onclick={(e) => { e.stopPropagation(); move(section, -1); }}>↑</button>
+          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-text" title="Move down" aria-label="Move down" disabled={i === sections.length - 1} onclick={(e) => { e.stopPropagation(); move(section, 1); }}>↓</button>
+          <button type="button" class="px-1.5 py-0.5 text-muted hover:text-rose-400" title="Remove this box" aria-label="Remove this box" onclick={(e) => { e.stopPropagation(); remove(section); }}>×</button>
         </div>
         <textarea
           placeholder="Write anything…"

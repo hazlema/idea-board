@@ -136,6 +136,16 @@ test('removing a non-empty box asks first; an empty one does not', async () => {
   expect(api.op).toHaveBeenCalledWith({ type: 'deleteSection', id: 's_2' });
 });
 
+test('removing the section chat is pointed at clears the pointer', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(BriefView);
+  await fireEvent.click(screen.getByRole('group'));
+  expect(live.pointing?.id).toBe('s_1');
+  await fireEvent.click(screen.getByRole('button', { name: 'Remove this box' }));
+  expect(api.op).toHaveBeenCalledWith({ type: 'deleteSection', id: 's_1' });
+  expect(live.pointing).toBeNull();
+});
+
 test('+ Add text box adds a section and focuses its heading', async () => {
   vi.mocked(api.op).mockResolvedValue({ section: section('s_new', '', '') });
   render(BriefView);
