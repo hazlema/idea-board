@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Idea board: serves the whiteboard page, keeps it live over server-sent
 // events, and exposes the board to Claude as an MCP server at /mcp.
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,11 +21,12 @@ const ASSET_TYPES = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', web
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function parseArgs(argv) {
-  const options = { file: 'idea-board.json', port: Number(process.env.IDEA_BOARD_PORT) || 4777, agent: true };
+  const options = { file: 'idea-board.json', port: Number(process.env.IDEA_BOARD_PORT) || 4777, agent: true, open: true };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--port') options.port = Number(argv[++i]);
     else if (arg === '--no-agent') options.agent = false;
+    else if (arg === '--no-open') options.open = false;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else options.file = arg;
   }
@@ -225,10 +227,30 @@ export function createServer({ store, agent, presence, port, distDir = DIST_DIR 
   });
 }
 
+/** The command that opens `url` in the default browser on `platform` (a process.platform value). */
+export function browserCommand(platform, url) {
+  if (platform === 'darwin') return { command: 'open', args: [url] };
+  // start is built into cmd; its first quoted argument is a window title, hence the empty one.
+  if (platform === 'win32') return { command: 'cmd', args: ['/c', 'start', '', url] };
+  return { command: 'xdg-open', args: [url] };
+}
+
+function openBrowser(url) {
+  const { command, args } = browserCommand(process.platform, url);
+  try {
+    const child = spawn(command, args, { stdio: 'ignore', detached: true, windowsHide: true });
+    // No browser opener (a server with no desktop, say): the URL is printed anyway.
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    // As above.
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
-    console.log('Usage: idea-board [board-file] [--port 4777] [--no-agent]\n\nboard-file defaults to ./idea-board.json');
+    console.log('Usage: idea-board [board-file] [--port 4777] [--no-agent] [--no-open]\n\nboard-file defaults to ./idea-board.json');
     return;
   }
   const store = new BoardStore(options.file);
@@ -253,6 +275,7 @@ function main() {
     console.log(`MCP for an interactive session:  claude mcp add --transport http idea-board ${mcpUrl}`);
     if (!fs.existsSync(path.join(DIST_DIR, 'index.html'))) console.log('Build:       npm run build   (the page is not built yet; run npm install first if needed)');
     if (!agent) console.log('Background Claude is off (--no-agent): chat waits for a session using wait_for_chat.');
+    if (options.open) openBrowser(`http://${HOST}:${options.port}`);
   });
 }
 

@@ -40,11 +40,11 @@ node ~/idea-board/server.mjs                         # board saved to ./idea-boa
 node ~/idea-board/server.mjs plans/game.json --port 4800
 ```
 
-Open http://127.0.0.1:4777 (or your `--port`). If `dist/` is missing the
-server tells you to run `npm run build`.
+The board opens in your browser at http://127.0.0.1:4777 (or your `--port`).
+If `dist/` is missing the server tells you to run `npm run build`.
 
 Options: `--port <n>`, `--no-agent` (never run a background Claude; see below),
-`--help`. The default port can also be set with `IDEA_BOARD_PORT`.
+`--no-open` (don't open a browser), `--help`. The default port can also be set with `IDEA_BOARD_PORT`.
 
 Files next to the board (for `plans/game.json`):
 
@@ -215,8 +215,8 @@ visit can't post to your board or set off a Claude run.
 
 ```bash
 npm install
-node server.mjs --no-agent       # the board server on 4777
-npm run dev                      # Vite dev server with hot reload; proxies /api, /assets and /mcp to 4777
+node server.mjs --no-agent --no-open   # the board server on 4777
+npm run dev                            # Vite dev server with hot reload; proxies /api, /assets and /mcp to 4777
 ```
 
 Open the URL Vite prints. `--no-agent` keeps the background Claude off while

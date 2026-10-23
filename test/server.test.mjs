@@ -5,6 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
+import { browserCommand } from '../server.mjs';
 
 test('MCP initialize and tools/list', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
@@ -220,3 +221,10 @@ test('asset routes keep the Host and Origin checks', () => withServer(async ({ b
   const res = await fetch(`${base}/api/assets`, { method: 'POST', headers: { origin: 'http://evil.example' }, body: PNG });
   assert.equal(res.status, 403);
 }));
+
+test('the browser opens with each platform\'s own command', () => {
+  const url = 'http://127.0.0.1:4777';
+  assert.deepEqual(browserCommand('darwin', url), { command: 'open', args: [url] });
+  assert.deepEqual(browserCommand('win32', url), { command: 'cmd', args: ['/c', 'start', '', url] });
+  assert.deepEqual(browserCommand('linux', url), { command: 'xdg-open', args: [url] });
+});
