@@ -78,3 +78,14 @@ test('Export design doc toasts where it was saved', async () => {
   await fireEvent.click(screen.getByRole('menuitem', { name: 'Export design doc' }));
   await waitFor(() => expect(live.toasts.map((t) => t.text)).toEqual(['Saved /tmp/board.design.md']));
 });
+
+test('the save status says Not saved while a field\'s text is unsaved, even after other edits succeed', async () => {
+  render(TopBar);
+  expect(screen.getByText('All changes saved')).toBeInTheDocument();
+  const field = {};
+  live.markUnsaved(field, () => Promise.resolve());
+  live.saveFailed = false; // a later edit went through
+  await waitFor(() => expect(screen.getByText('Not saved')).toBeInTheDocument());
+  live.markSaved(field);
+  await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
+});

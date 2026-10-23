@@ -4,11 +4,14 @@
 // The field shows the draft while there is one, else the server's value. A
 // draft is saved after a pause, and at once when focus leaves (or the
 // component goes away). Once focus has left and the save has landed, the
-// draft is dropped and the field shows the board again (a failed save keeps
-// the typing on screen and is retried the next time focus leaves).
+// draft is dropped and the field shows the board again. A failed save keeps
+// the typing on screen, counts as unsaved in the save status, and is retried
+// every few seconds and the next time focus leaves, until it lands.
 //
-// Create it during component setup: it ties itself to the component's life.
+// Create it during component setup: it ties itself to the component's life
+// (an unsaved draft keeps retrying after its component has gone).
 import { onDestroy, untrack } from 'svelte';
+import { live } from './live.svelte';
 
 export interface DraftOptions {
   /** The value on the board. */
@@ -104,6 +107,7 @@ export class Draft {
     this.#clearTimer();
     this.#dirty = false;
     this.#value = null;
+    live.markSaved(this);
   }
 
   #valid(value: string): boolean {
@@ -125,7 +129,10 @@ export class Draft {
     const value = this.#value;
     if (value === null || !this.#dirty) return false;
     this.#dirty = false;
-    if (!this.#valid(value)) return false;
+    if (!this.#valid(value)) {
+      live.markSaved(this);
+      return false;
+    }
     this.#inFlight += 1;
     let result: unknown;
     try {
@@ -133,9 +140,16 @@ export class Draft {
     } finally {
       this.#inFlight -= 1;
     }
-    // A failed save keeps the typing on screen and tries again when focus next leaves.
-    if (result === null && this.#value === value) this.#dirty = true;
-    else if (this.#settled() && this.#value !== null && same(this.#value, this.#options.server())) this.#value = null;
+    // A failed save keeps the typing on screen and tries again (see live.markUnsaved).
+    if (result === null) {
+      if (this.#value === value) {
+        this.#dirty = true;
+        live.markUnsaved(this, () => this.flush());
+      }
+      return true;
+    }
+    live.markSaved(this);
+    if (this.#settled() && this.#value !== null && same(this.#value, this.#options.server())) this.#value = null;
     return true;
   }
 }

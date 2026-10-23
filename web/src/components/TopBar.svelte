@@ -12,7 +12,7 @@
   let saveOpen = $state(false);
   let versionName = $state('');
 
-  const saveStatus = $derived(live.saveFailed ? 'Not saved' : live.saving > 0 ? 'Saving…' : 'All changes saved');
+  const saveStatus = $derived(live.saveStatus);
 
   function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : 'Something went wrong';
@@ -128,7 +128,7 @@
   </div>
 
   <div class="ml-auto flex items-center gap-2">
-    <span class="mr-2 text-xs {live.saveFailed ? 'text-rose-400' : 'text-muted'}" aria-live="polite">{saveStatus}</span>
+    <span class="mr-2 text-xs {saveStatus === 'Not saved' ? 'text-rose-400' : 'text-muted'}" aria-live="polite">{saveStatus}</span>
     <button class={button} onclick={() => step('undo')}>↶ Undo</button>
     <button class={button} aria-label="Redo" title="Redo" onclick={() => step('redo')}>↷</button>
 

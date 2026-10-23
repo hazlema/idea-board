@@ -6,7 +6,7 @@ import type { Board, FlowEdge, FlowNode, RuledOut } from '$lib/types';
 vi.mock('$lib/api', () => ({ op: vi.fn().mockResolvedValue({}) }));
 
 import * as api from '$lib/api';
-import { live } from '$lib/live.svelte';
+import { live, RETRY_MS } from '$lib/live.svelte';
 import FlowchartView from './FlowchartView.svelte';
 
 const node = (id: string, title: string, extra: Partial<FlowNode> = {}): FlowNode => ({
@@ -182,6 +182,50 @@ test('typing in the title is not clobbered by a Claude edit, and saves after 400
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('a failed save in the card panel keeps the typed notes, and a later success saves them', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server'));
+    const { container } = render(FlowchartView);
+    await select(container, 'n_1');
+    const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement;
+    notes.focus();
+    await fireEvent.input(notes, { target: { value: 'Breathe fire' } });
+    notes.blur();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.op).toHaveBeenCalledWith({ type: 'updateNode', id: 'n_1', notes: 'Breathe fire' });
+    expect(notes.value).toBe('Breathe fire');
+    expect(live.saveStatus).toBe('Not saved');
+
+    await vi.advanceTimersByTimeAsync(RETRY_MS);
+    expect(api.op).toHaveBeenCalledTimes(2);
+    expect(live.saveStatus).toBe('All changes saved');
+    expect(notes.value).toBe('Breathe fire');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a failed save of a connection label keeps the typing until it is saved', async () => {
+  live.board = boardWith([node('n_1', 'Dragons'), node('n_2', 'Wizards', { x: 400 })], [{ id: 'e_1', from: 'n_1', to: 'n_2', label: '', author: 'user' }]);
+  vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server'));
+  const { container } = render(FlowchartView);
+  // The arrows' layer is hidden from assistive tech (the panel lists connections), so find it directly.
+  await fireEvent.pointerDown(container.querySelector('g[aria-label="Connection"]') as Element);
+  const label = screen.getByLabelText('Label') as HTMLInputElement;
+  label.focus();
+  await fireEvent.input(label, { target: { value: 'fears' } });
+  label.blur();
+  await waitFor(() => expect(api.op).toHaveBeenCalledWith({ type: 'updateEdge', id: 'e_1', label: 'fears' }));
+  await waitFor(() => expect(live.saveStatus).toBe('Not saved'));
+  expect(label.value).toBe('fears');
+  label.focus();
+  label.blur();
+  await waitFor(() => expect(live.saveStatus).toBe('All changes saved'));
+  expect(api.op).toHaveBeenCalledTimes(2);
+  expect(label.value).toBe('fears');
 });
 
 test('connections in the panel select the other card', async () => {

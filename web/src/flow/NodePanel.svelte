@@ -1,10 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { Draft } from '$lib/draft.svelte';
   import { ago, whoName } from '$lib/format';
   import { live } from '$lib/live.svelte';
   import type { FlowNode, FlowProp, FlowStatus } from '$lib/types';
-
-  type Field = 'title' | 'notes';
 
   interface Props {
     node: FlowNode;
@@ -18,25 +17,25 @@
 
   let { node, focusTitle, onfocused, onclose, ondelete, ongoto }: Props = $props();
 
-  const DELAY: Record<Field, number> = { title: 400, notes: 500 };
   const STATUSES: { key: FlowStatus; label: string }[] = [
     { key: 'idea', label: 'Idea' },
     { key: 'accepted', label: 'Accepted' },
     { key: 'rejected', label: 'Rejected' },
   ];
 
-  // What the user has typed and the server has not confirmed yet. A field with a
-  // draft shows the draft, so an incoming board update never overwrites typing.
-  let drafts = $state<Partial<Record<Field, string>>>({});
   let propsDraft = $state<FlowProp[] | null>(null);
-  let focused = $state<Field | null>(null);
   let titleInput: HTMLInputElement | undefined = $state();
   let propsList: HTMLDivElement | undefined = $state();
   let lastSentProps: string | null = null;
 
-  const timers: Partial<Record<Field, ReturnType<typeof setTimeout>>> = {};
+  // Saving a card that is gone (deleted meanwhile) has nothing left to do.
+  const update = (fields: { title?: string; notes?: string; props?: FlowProp[] }): Promise<unknown> =>
+    live.board?.flow.nodes.some((n) => n.id === node.id) ? live.send({ type: 'updateNode', id: node.id, ...fields }) : Promise.resolve({});
 
-  const shown = (field: Field): string => drafts[field] ?? node[field];
+  // A card keeps its title: an empty one is simply not sent.
+  const title = new Draft({ server: () => node.title, save: (v) => update({ title: v }), delay: 400, valid: (v) => v.trim() !== '' });
+  const notes = new Draft({ server: () => node.notes, save: (v) => update({ notes: v }), delay: 500 });
+
   const shownProps = $derived(propsDraft ?? node.props);
   const rejected = $derived(node.status === 'rejected');
   const record = $derived(live.board?.ruledOut.find((r) => r.source.nodeId === node.id));
@@ -46,8 +45,7 @@
   const titleOf = (id: string): string => live.board?.flow.nodes.find((n) => n.id === id)?.title ?? '?';
 
   onMount(() => () => {
-    // Switching cards must not lose a half-debounced edit.
-    for (const field of ['title', 'notes'] as const) void flush(field);
+    // Switching cards must not lose half-typed properties (the drafts save themselves).
     void commitProps();
   });
 
@@ -57,37 +55,6 @@
     titleInput.select();
     onfocused();
   });
-
-  async function save(field: Field): Promise<void> {
-    const sent = drafts[field];
-    if (sent === undefined) return;
-    // A card keeps its title: an empty one is simply not sent.
-    if (field === 'title' ? sent.trim() : true) await live.send({ type: 'updateNode', id: node.id, [field]: sent });
-    if (focused !== field && drafts[field] === sent) delete drafts[field];
-  }
-
-  async function flush(field: Field): Promise<void> {
-    if (!(field in timers)) return;
-    clearTimeout(timers[field]);
-    delete timers[field];
-    await save(field);
-  }
-
-  function type(field: Field, value: string): void {
-    drafts[field] = value;
-    clearTimeout(timers[field]);
-    timers[field] = setTimeout(() => {
-      delete timers[field];
-      void save(field);
-    }, DELAY[field]);
-  }
-
-  async function onBlur(field: Field): Promise<void> {
-    if (focused === field) focused = null;
-    await flush(field);
-    // Nothing was waiting to be saved: show the server's value again.
-    if (!(field in timers) && drafts[field] !== undefined && focused !== field) delete drafts[field];
-  }
 
   function titleKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.isComposing) return;
@@ -100,18 +67,28 @@
     propsDraft[index][part] = value;
   }
 
-  async function commitProps(): Promise<void> {
-    if (!propsDraft) return;
+  // Identifies the property list to live's unsaved-field tracking.
+  const propsField = {};
+
+  /** Sends edited properties. Resolves false when the save failed: the edits stay and are retried. */
+  async function commitProps(): Promise<boolean> {
+    if (!propsDraft) return true;
     const props = propsDraft.filter((p) => p.key.trim() || p.value.trim()).map((p) => ({ key: p.key, value: p.value }));
     const body = JSON.stringify(props);
-    if (body === (lastSentProps ?? JSON.stringify(node.props))) return;
+    if (body === (lastSentProps ?? JSON.stringify(node.props))) return true;
     lastSentProps = body;
-    await live.send({ type: 'updateNode', id: node.id, props });
+    const saved = (await update({ props })) !== null;
+    if (saved) live.markSaved(propsField);
+    else {
+      lastSentProps = null;
+      live.markUnsaved(propsField, commitProps);
+    }
+    return saved;
   }
 
   async function leaveProps(event: FocusEvent): Promise<void> {
     if (propsList?.contains(event.relatedTarget as Node | null)) return;
-    await commitProps();
+    if (!(await commitProps())) return;
     propsDraft = null;
     lastSentProps = null;
   }
@@ -180,11 +157,8 @@
       type="text"
       maxlength="200"
       class="{input} text-base font-semibold"
-      value={shown('title')}
-      oninput={(e) => type('title', e.currentTarget.value)}
+      {...title.attrs}
       onkeydown={titleKeydown}
-      onfocus={() => (focused = 'title')}
-      onblur={() => onBlur('title')}
     />
   </div>
 
@@ -208,10 +182,7 @@
       id="node-notes"
       class="{input} min-h-30 resize-y leading-relaxed"
       placeholder="Details, open questions, examples…"
-      value={shown('notes')}
-      oninput={(e) => type('notes', e.currentTarget.value)}
-      onfocus={() => (focused = 'notes')}
-      onblur={() => onBlur('notes')}
+      {...notes.attrs}
     ></textarea>
   </div>
 

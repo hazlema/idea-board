@@ -1,4 +1,4 @@
-import { SvelteSet } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import * as api from './api';
 import type { AgentState, Board, Op, Pointer } from './types';
 
@@ -16,6 +16,8 @@ const VIEW_KEY = 'idea-board-tab';
 const VIEWS: View[] = ['brief', 'brainstorm', 'flowchart'];
 const FLASH_MS = 1600;
 const TOAST_MS = 6000;
+/** How often fields whose save failed try again. */
+export const RETRY_MS = 5000;
 
 type ServerEvent =
   | { type: 'board'; board: Board; op?: string; author?: string; changed?: string[] }
@@ -40,6 +42,7 @@ class Live {
   presence = $state(false);
   /** Edits sent and not yet answered. */
   saving = $state(0);
+  /** The last edit sent failed. */
   saveFailed = $state(false);
   /** What the next chat message is about, set by the views. */
   pointing = $state<Pointer | null>(null);
@@ -56,6 +59,10 @@ class Live {
   #flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
   #events: EventSource | null = null;
   #toastId = 0;
+  // Typed text whose save failed, by field, with how to try it again.
+  #unsaved = new SvelteMap<object, () => Promise<unknown>>();
+  #retryTimer: ReturnType<typeof setInterval> | null = null;
+  #lastFailure: string | null = null;
 
   get view(): View {
     return this.#view;
@@ -68,6 +75,36 @@ class Live {
     } catch {
       // Private mode: the tab just won't be remembered.
     }
+  }
+
+  /** True while some typed text is not on the server (its save failed and is being retried). */
+  get unsaved(): boolean {
+    return this.#unsaved.size > 0;
+  }
+
+  /** What the save status says. */
+  get saveStatus(): 'Not saved' | 'Saving…' | 'All changes saved' {
+    if (this.saveFailed || this.unsaved) return 'Not saved';
+    return this.saving > 0 ? 'Saving…' : 'All changes saved';
+  }
+
+  /**
+   * A field's save failed: it counts as unsaved, and `retry` is called every
+   * RETRY_MS until the field reports it saved.
+   */
+  markUnsaved(field: object, retry: () => Promise<unknown>): void {
+    this.#unsaved.set(field, retry);
+    this.#retryTimer ??= setInterval(() => {
+      for (const again of [...this.#unsaved.values()]) void again();
+    }, RETRY_MS);
+  }
+
+  /** A field has nothing unsaved any more. */
+  markSaved(field: object): void {
+    if (!this.#unsaved.delete(field) || this.#unsaved.size) return;
+    this.#lastFailure = null;
+    if (this.#retryTimer !== null) clearInterval(this.#retryTimer);
+    this.#retryTimer = null;
   }
 
   connect(): void {
@@ -92,7 +129,10 @@ class Live {
       return await api.op(o);
     } catch (error) {
       this.saveFailed = true;
-      this.toast(error instanceof Error ? error.message : 'Could not save');
+      const text = error instanceof Error ? error.message : 'Could not save';
+      // Retries of unsaved fields fail the same way; say so once.
+      if (!(this.unsaved && text === this.#lastFailure)) this.toast(text);
+      this.#lastFailure = text;
       return null;
     } finally {
       this.saving -= 1;

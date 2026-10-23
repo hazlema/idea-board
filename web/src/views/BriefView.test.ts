@@ -6,7 +6,7 @@ import type { Board, Section } from '$lib/types';
 vi.mock('$lib/api', () => ({ op: vi.fn().mockResolvedValue({}) }));
 
 import * as api from '$lib/api';
-import { live } from '$lib/live.svelte';
+import { live, RETRY_MS } from '$lib/live.svelte';
 import BriefView from './BriefView.svelte';
 
 const section = (id: string, title: string, text: string, extra: Partial<Section> = {}): Section => ({
@@ -69,18 +69,68 @@ test('other sections and fields still update while one field has focus', async (
   expect(titleTwo.value).toBe('Scope 2');
 });
 
-test('after focus leaves, the field shows the latest server value', async () => {
+test('after focus leaves and the save lands, the field shows the latest server value', async () => {
   render(BriefView);
   const area = screen.getByPlaceholderText('Write anything…') as HTMLTextAreaElement;
   area.focus();
   await fireEvent.input(area, { target: { value: 'My typing' } });
-  live.board = boardWith(section('s_1', 'Goal', 'Server text'));
 
   area.blur();
   await vi.advanceTimersByTimeAsync(0);
   // Blur flushes the save straight away, without waiting out the debounce.
   expect(api.op).toHaveBeenCalledWith({ type: 'updateSection', id: 's_1', text: 'My typing' });
+  // Claude edits the section afterwards: the board wins.
+  live.board = boardWith(section('s_1', 'Goal', 'Server text'));
+  await vi.advanceTimersByTimeAsync(0);
   expect(area.value).toBe('Server text');
+});
+
+test('a failed save keeps the typed text after blur, says Not saved, and retries until it lands', async () => {
+  vi.mocked(api.op).mockRejectedValue(new Error('Could not reach the board server'));
+  render(BriefView);
+  const area = screen.getByPlaceholderText('Write anything…') as HTMLTextAreaElement;
+  area.focus();
+  await fireEvent.input(area, { target: { value: 'My typing' } });
+  area.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.op).toHaveBeenCalledWith({ type: 'updateSection', id: 's_1', text: 'My typing' });
+  expect(area.value).toBe('My typing');
+  expect(live.saveStatus).toBe('Not saved');
+
+  // The server is back: another edit succeeds, but the typed text is still unsaved.
+  vi.mocked(api.op).mockResolvedValue({});
+  await fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.op).toHaveBeenLastCalledWith({ type: 'moveSection', id: 's_1', by: 1 });
+  expect(live.saveStatus).toBe('Not saved');
+  expect(area.value).toBe('My typing');
+
+  // The retry saves it.
+  vi.mocked(api.op).mockClear();
+  await vi.advanceTimersByTimeAsync(RETRY_MS);
+  expect(api.op).toHaveBeenCalledWith({ type: 'updateSection', id: 's_1', text: 'My typing' });
+  expect(live.saveStatus).toBe('All changes saved');
+  live.board = boardWith(section('s_1', 'Goal', 'My typing'));
+  await vi.advanceTimersByTimeAsync(RETRY_MS);
+  expect(api.op).toHaveBeenCalledTimes(1);
+  expect(area.value).toBe('My typing');
+});
+
+test('a failed save is retried when focus next leaves', async () => {
+  vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server'));
+  render(BriefView);
+  const title = screen.getByPlaceholderText('Heading') as HTMLInputElement;
+  title.focus();
+  await fireEvent.input(title, { target: { value: 'New goal' } });
+  title.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(title.value).toBe('New goal');
+  title.focus();
+  title.blur();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.op).toHaveBeenCalledTimes(2);
+  expect(api.op).toHaveBeenLastCalledWith({ type: 'updateSection', id: 's_1', title: 'New goal' });
+  expect(live.saveStatus).toBe('All changes saved');
 });
 
 test('the heading saves after 400 ms', async () => {

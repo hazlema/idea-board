@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { Draft } from '$lib/draft.svelte';
   import { whoName } from '$lib/format';
   import { live } from '$lib/live.svelte';
   import type { FlowEdge } from '$lib/types';
@@ -13,46 +13,14 @@
 
   let { edge, onclose, ondelete, ongoto }: Props = $props();
 
-  const DELAY = 400;
+  // Saving a connection that is gone (deleted meanwhile) has nothing left to do.
+  const label = new Draft({
+    server: () => edge.label,
+    save: (v) => (live.board?.flow.edges.some((e) => e.id === edge.id) ? live.send({ type: 'updateEdge', id: edge.id, label: v }) : Promise.resolve({})),
+    delay: 400,
+  });
 
-  // Same rule as the card panel: typing is kept until it has been sent and the field is left.
-  let draft = $state<string | null>(null);
-  let focused = $state(false);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  const shown = $derived(draft ?? edge.label);
   const titleOf = (id: string): string => live.board?.flow.nodes.find((n) => n.id === id)?.title ?? '?';
-
-  onMount(() => () => void flush());
-
-  async function save(): Promise<void> {
-    const sent = draft;
-    if (sent === null) return;
-    await live.send({ type: 'updateEdge', id: edge.id, label: sent });
-    if (!focused && draft === sent) draft = null;
-  }
-
-  async function flush(): Promise<void> {
-    if (timer === undefined) return;
-    clearTimeout(timer);
-    timer = undefined;
-    await save();
-  }
-
-  function type(value: string): void {
-    draft = value;
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = undefined;
-      void save();
-    }, DELAY);
-  }
-
-  async function onBlur(): Promise<void> {
-    focused = false;
-    await flush();
-    if (timer === undefined && draft !== null && !focused) draft = null;
-  }
 
   function onkeydown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.isComposing) return;
@@ -86,11 +54,8 @@
       maxlength="200"
       placeholder="e.g. unlocks, requires, costs"
       class="w-full rounded-md border border-line bg-ink px-2.5 py-1.5"
-      value={shown}
-      oninput={(e) => type(e.currentTarget.value)}
+      {...label.attrs}
       {onkeydown}
-      onfocus={() => (focused = true)}
-      onblur={onBlur}
     />
   </div>
 
