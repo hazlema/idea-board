@@ -12,6 +12,18 @@
   /** Shared by every row and group, so the one under the pointer can show the drop line. */
   export const entryDrop: EntryDrop = $state({ dragging: null, groupId: null, entryId: null, after: false });
 
+  export const LABEL_GAP = 4;
+  // Room the text needs beside the label before the label moves to its own line.
+  const MIN_TEXT_ROOM = 48;
+
+  /**
+   * Whether the label goes on its own lines above the text. `labelWidth` is the
+   * label's own (fit-content) width, `columnWidth` the row's text column.
+   */
+  export function labelStacks(labelWidth: number, columnWidth: number): boolean {
+    return columnWidth > 0 && labelWidth + LABEL_GAP + MIN_TEXT_ROOM > columnWidth;
+  }
+
   /**
    * The moveEntry that puts `entryId` where it was dropped, or null when it would stay put
    * (dropped on its own row, next to where it is, or on nothing).
@@ -50,10 +62,7 @@
   let labelWidth = $state(0);
   let columnWidth = $state(0);
 
-  const LABEL_GAP = 4;
-  // Room the text needs beside the label before the label moves to its own line.
-  const MIN_TEXT_ROOM = 48;
-  const stacked = $derived(columnWidth > 0 && labelWidth + LABEL_GAP + MIN_TEXT_ROOM > columnWidth);
+  const stacked = $derived(labelStacks(labelWidth, columnWidth));
   let textField: HTMLTextAreaElement | undefined = $state();
 
   /** The group that holds this entry now (it may have moved), or undefined once it is gone. */
@@ -191,7 +200,8 @@
     <!-- The label sits on the first line of the text, which is indented past it;
          a label too long for that goes on its own lines above the text. -->
     <div class="relative" bind:clientWidth={columnWidth}>
-      <div class="{stacked ? 'relative' : 'absolute top-0 left-0 z-10'} flex max-w-full items-end font-semibold" bind:offsetWidth={labelWidth}>
+      <!-- w-fit: the wrapper is as wide as the label in both layouts, so a shortened label can go back inline. -->
+      <div class="{stacked ? 'relative' : 'absolute top-0 left-0 z-10'} flex w-fit max-w-full items-end font-semibold" bind:offsetWidth={labelWidth}>
         <textarea
           rows="1"
           cols={Math.max(2, label.shown.length)}

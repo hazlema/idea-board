@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Entry, Group } from '$lib/types';
-import { entryMove } from './EntryRow.svelte';
+import { entryMove, labelStacks } from './EntryRow.svelte';
 
 const entry = (id: string): Entry => ({ id, label: id, text: '', check: 'none', ruledOut: false, author: 'user', claudeAdded: false });
 const group = (id: string, ids: string[]): Group => ({
@@ -53,4 +53,17 @@ test('no drop target, or one that has gone, means no move', () => {
   expect(entryMove(groups, 'towers', { groupId: null, entryId: null, after: false })).toBeNull();
   expect(entryMove(groups, 'towers', { groupId: 'gone', entryId: null, after: false })).toBeNull();
   expect(entryMove(groups, 'towers', { groupId: 'trolls', entryId: 'gone', after: false })).toBeNull();
+});
+
+test('a label stacks above its text only while it leaves too little room beside it', () => {
+  // Column 300 px: the label needs 4 px gap and 48 px of text room beside it.
+  expect(labelStacks(120, 300)).toBe(false);
+  expect(labelStacks(248, 300)).toBe(false);
+  expect(labelStacks(249, 300)).toBe(true);
+  // A long label measured at the full column width stacks...
+  expect(labelStacks(300, 300)).toBe(true);
+  // ...and once shortened (its own width is measured, not the column's) it goes back inline.
+  expect(labelStacks(90, 300)).toBe(false);
+  // Not laid out yet (no column width): inline.
+  expect(labelStacks(0, 0)).toBe(false);
 });
