@@ -160,6 +160,8 @@ export function createServer({ store, agent, presence, port }) {
         if (restore && req.method === 'POST') return sendJson(res, 200, store.restoreVersion(id, 'user'));
       }
 
+      if (url.pathname === '/api/export' && req.method === 'POST') return sendJson(res, 200, { path: store.exportDesignDoc() });
+
       if (url.pathname === '/api/assets' && req.method === 'POST') {
         const bytes = await readRawBody(req, MAX_ASSET_BYTES);
         try { return sendJson(res, 200, { asset: store.assets.ingestBuffer(bytes).asset }); }

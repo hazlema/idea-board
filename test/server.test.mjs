@@ -171,6 +171,17 @@ test('versions endpoints save, list, preview and restore', () => withServer(asyn
   }
 }));
 
+test('export endpoint writes the design doc and returns its path', () => withServer(async ({ base, userOp, store }) => {
+  await userOp({ type: 'addObject', kind: 'note', text: 'exported note' });
+  const res = await fetch(`${base}/api/export`, { method: 'POST' });
+  assert.equal(res.status, 200);
+  const { path: file } = await res.json();
+  assert.equal(file, store.paths.design);
+  assert.match(fs.readFileSync(file, 'utf8'), /> exported note/);
+  const blocked = await fetch(`${base}/api/export`, { method: 'POST', headers: { origin: 'http://evil.example' } });
+  assert.equal(blocked.status, 403);
+}));
+
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const ASSET_NAME = /^[0-9a-f]{32}\.png$/;
 
