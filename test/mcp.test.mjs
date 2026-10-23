@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { buildPrompt } from '../lib/agent.mjs';
+import { createToolRunner } from '../lib/mcp.mjs';
+import { BoardStore } from '../lib/store.mjs';
 import { withServer } from './helpers.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
@@ -395,3 +399,19 @@ test('wait_for_chat reports what the user changed on the board since Claude last
   assert.deepEqual(again.board_changes, []);
   assert.equal(again.next, 'No new messages. Call wait_for_chat again to keep listening.');
 }));
+
+test('the tool runner acts as the author it was given, claude by default', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  try {
+    const store = new BoardStore(path.join(dir, 'board.json'));
+    const id = 'agent:x/y=qa';
+    store.board.colab.roster.push({ id, model: 'x/y', roleId: 'qa', name: 'Y · QA', modelName: 'Y', color: 'amber' });
+    const authorOf = (groupId) => store.board.brainstorm.pages[0].objects.find((o) => o.id === groupId).author;
+    const agent = await createToolRunner(store, null, { author: id }).call('add_group', { title: 'Agent group' });
+    assert.equal(authorOf(agent.id), id);
+    const claude = await createToolRunner(store, null).call('add_group', { title: 'Claude group' });
+    assert.equal(authorOf(claude.id), 'claude');
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
