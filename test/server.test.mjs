@@ -144,3 +144,28 @@ test('history endpoint lists newest first with undone flags', () => withServer(a
   assert.equal((await post('/api/undo-turn', {})).status, 400);
   assert.equal((await fetch(`${base}/api/history?limit=abc`)).status, 400);
 }));
+
+test('versions endpoints save, list, preview and restore', () => withServer(async ({ base, userOp }) => {
+  const post = (url, body) => fetch(`${base}${url}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  assert.equal((await post('/api/versions', { name: '  ' })).status, 400);
+  await userOp({ type: 'addObject', kind: 'note', text: 'keep me' });
+  const { version } = await (await post('/api/versions', { name: 'before' })).json();
+  assert.equal(version.name, 'before');
+  assert.equal(version.stats.notes, 1);
+  await userOp({ type: 'addObject', kind: 'note', text: 'extra' });
+  const { versions } = await (await fetch(`${base}/api/versions`)).json();
+  assert.deepEqual(versions.map((v) => v.id), [version.id]);
+  const preview = await (await fetch(`${base}/api/versions/${version.id}`)).json();
+  assert.equal(preview.meta.id, version.id);
+  assert.equal(preview.content.brainstorm.pages[0].objects.length, 1);
+  const restored = await post(`/api/versions/${version.id}/restore`);
+  assert.equal(restored.status, 200);
+  const body = await restored.json();
+  assert.equal(body.backup.auto, true);
+  const { board } = await (await fetch(`${base}/api/board`)).json();
+  assert.equal(board.brainstorm.pages[0].objects.length, 1);
+  for (const id of ['v_20200101-000000_abcd', '..%2Fboard', 'nope']) {
+    assert.equal((await fetch(`${base}/api/versions/${id}`)).status, 404, id);
+    assert.equal((await post(`/api/versions/${id}/restore`)).status, 404, id);
+  }
+}));

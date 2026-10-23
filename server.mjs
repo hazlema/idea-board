@@ -119,6 +119,22 @@ export function createServer({ store, agent, presence, port }) {
         return sendJson(res, 200, store.history({ limit: Math.min(limit, 500), before }));
       }
 
+      if (url.pathname === '/api/versions') {
+        if (req.method === 'GET') return sendJson(res, 200, { versions: store.versions.list() });
+        if (req.method === 'POST') {
+          const { name } = (await readBody(req)) ?? {};
+          if (typeof name !== 'string' || !name.trim()) return sendJson(res, 400, { error: 'name is required' });
+          return sendJson(res, 200, { version: store.saveVersion(name.trim().slice(0, 200), 'user') });
+        }
+      }
+
+      const versionRoute = /^\/api\/versions\/([^/]+?)(\/restore)?$/.exec(url.pathname);
+      if (versionRoute) {
+        const [, id, restore] = versionRoute;
+        if (!restore && req.method === 'GET') return sendJson(res, 200, store.versions.read(id));
+        if (restore && req.method === 'POST') return sendJson(res, 200, store.restoreVersion(id, 'user'));
+      }
+
       if (req.method === 'GET') {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
         const file = path.join(PUBLIC_DIR, name);
