@@ -251,6 +251,7 @@ function main() {
     console.log(`Idea board:  http://${HOST}:${options.port}`);
     console.log(`Board file:  ${store.file}`);
     console.log(`MCP for an interactive session:  claude mcp add --transport http idea-board ${mcpUrl}`);
+    if (!fs.existsSync(path.join(DIST_DIR, 'index.html'))) console.log('Build:       npm run build   (the page is not built yet; run npm install first if needed)');
     if (!agent) console.log('Background Claude is off (--no-agent): chat waits for a session using wait_for_chat.');
   });
 }
