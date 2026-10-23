@@ -134,10 +134,14 @@
     if (isBrainstormPointer()) live.pointing = null;
   }
 
-  // Drop a selection whose object or link is gone.
+  // Drop a selection whose object or link is gone. Something just created is
+  // what the user is about to talk about: point chat at it once it is there.
   $effect(() => {
     if (!selected || selectedObject || selectedLink) {
-      if (selected && arriving === selected.id) arriving = null;
+      if (selected && arriving === selected.id) {
+        arriving = null;
+        if (selectedObject) point(selectedObject);
+      }
       return;
     }
     if (arriving !== selected.id) select(null);

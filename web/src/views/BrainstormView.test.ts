@@ -83,6 +83,37 @@ test('▤ Group adds "New group" at the middle of the view and focuses its title
   await waitFor(() => expect(screen.getByDisplayValue('New group')).toHaveFocus());
 });
 
+test('a new object or picture moves the Talking about chip to itself when it arrives', async () => {
+  const { container } = render(BrainstormView);
+  await fireEvent.pointerDown(box(container, 'o_wiz'), { button: 0 });
+  expect(live.pointing?.id).toBe('o_wiz');
+
+  const added: BObject[] = [];
+  const arrive = async (o: BObject) => {
+    added.push(o);
+    live.board = boardWith([group('o_wiz', 'Wizards'), ...added]);
+    await waitFor(() => expect(live.pointing?.id).toBe(o.id));
+  };
+
+  vi.mocked(api.op).mockResolvedValueOnce({ object: note('o_n', '') });
+  await fireEvent.click(screen.getByRole('button', { name: '✎ Note' }));
+  // Until the board shows it, the chip stays where it was.
+  expect(live.pointing?.id).toBe('o_wiz');
+  await arrive(note('o_n', '', { x: 900 }));
+  expect(live.pointing).toEqual({ kind: 'object', id: 'o_n', label: 'Note' });
+
+  vi.mocked(api.op).mockResolvedValueOnce({ object: topic('o_t', 'New topic') });
+  await fireEvent.click(screen.getByRole('button', { name: '● Topic' }));
+  await arrive({ ...topic('o_t', 'New topic'), x: 1400 });
+  expect(live.pointing?.label).toBe('New topic');
+
+  vi.mocked(api.uploadPicture).mockResolvedValue(ASSET);
+  vi.mocked(api.op).mockImplementation(async (o) => (o.type === 'addObject' ? { object: picture('o_p') } : {}));
+  window.dispatchEvent(pasteEvent({ file: new File(['png'], 'sketch.png', { type: 'image/png' }) }));
+  await waitFor(() => expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'addObject', kind: 'picture' })));
+  await arrive(picture('o_p', { x: 2000 }));
+});
+
 test('clicking an object points chat at its first line; empty canvas clears it', async () => {
   live.board = boardWith([group('o_wiz', `${'W'.repeat(70)}\nsecond line`)]);
   const { container } = render(BrainstormView);
