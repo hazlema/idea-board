@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BoardStore } from '../lib/board.mjs';
+import { BoardStore } from '../lib/store.mjs';
 import { Presence } from '../lib/mcp.mjs';
 import { createServer } from '../server.mjs';
 
@@ -57,7 +57,7 @@ test('Claude edits through MCP show up for the user, attributed to Claude', () =
   assert.equal(view.nodes.length, 2);
   assert.deepEqual(view.connections, [{ from: root.id, to: child.id, label: 'costs' }]);
   const { board } = await (await fetch(`${base}/api/board`)).json();
-  assert.ok(board.nodes.every((n) => n.author === 'claude'));
+  assert.ok(board.flow.nodes.every((n) => n.author === 'claude'));
   const detail = await call('get_node', { id: root.id });
   assert.equal(detail.outgoing[0].to_title, 'Soul tax');
   const bad = await call('get_node', { id: 'missing' });

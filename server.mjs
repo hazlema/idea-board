@@ -5,7 +5,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BoardStore, OpError } from './lib/board.mjs';
+import { OpError } from './lib/board.mjs';
+import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence } from './lib/mcp.mjs';
 import { Agent } from './lib/agent.mjs';
 

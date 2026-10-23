@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { BoardStore } from '../lib/store.mjs';
+import { boardPaths } from '../lib/paths.mjs';
+
+const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+
+test('boardPaths derives sibling files from the board path', () => {
+  const p = boardPaths('/tmp/x/plans/game.json');
+  assert.equal(p.board, '/tmp/x/plans/game.json');
+  assert.equal(p.base, '/tmp/x/plans/game');
+  assert.equal(p.assets, '/tmp/x/plans/game.assets');
+  assert.equal(p.versions, '/tmp/x/plans/game.versions');
+  assert.equal(p.history, '/tmp/x/plans/game.history.jsonl');
+  assert.equal(p.design, '/tmp/x/plans/game.design.md');
+});
+
+test('BoardStore persists to disk and reloads', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'board.json');
+  const store = new BoardStore(file);
+  store.apply({ type: 'addNode', title: 'Saved', x: 0, y: 0 }, 'user');
+  const reloaded = new BoardStore(file);
+  assert.equal(reloaded.board.flow.nodes[0].title, 'Saved');
+  assert.equal(reloaded.board.version, 1);
+  assert.equal(reloaded.paths.base, path.join(dir, 'board'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('board events carry changed as an array of ids', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const events = [];
+  const off = store.subscribe((e) => events.push(e));
+  const { node } = store.apply({ type: 'addNode', title: 'A', x: 0, y: 0 }, 'claude');
+  store.apply({ type: 'setTitle', title: 'T' }, 'user');
+  off();
+  store.apply({ type: 'setTitle', title: 'U' }, 'user');
+  assert.equal(events.length, 2);
+  assert.deepEqual(events[0].changed, [node.id]);
+  assert.deepEqual(events[1].changed, []);
+  assert.equal(events[0].type, 'board');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('a v1 board file on disk loads, and saves back as v2', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'board.json');
+  fs.writeFileSync(file, JSON.stringify({
+    version: 9, title: 'Old', brief: { sections: [{ id: 's_1', title: 'T', text: 'x', updatedBy: 'user', updatedAt: 'a' }] },
+    nodes: [{ id: 'n_1', title: 'A', notes: '', props: [], status: 'accepted', author: 'user', x: 0, y: 0 }],
+    edges: [], chat: [{ id: 'm_1', role: 'user', text: 'hi', at: 'a', handled: true }], claudeSessionId: 'sess-1',
+  }));
+  const store = new BoardStore(file);
+  assert.equal(store.board.flow.nodes.length, 1);
+  store.apply({ type: 'setTitle', title: 'New' }, 'user');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(saved.schema, 2);
+  assert.equal(saved.title, 'New');
+  assert.equal(saved.flow.nodes[0].title, 'A');
+  assert.equal(saved.chat[0].text, 'hi');
+  assert.equal(saved.claudeSessionId, 'sess-1');
+  assert.equal('nodes' in saved, false);
+  fs.rmSync(dir, { recursive: true });
+});

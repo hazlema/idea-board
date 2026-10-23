@@ -64,7 +64,7 @@ function renderSaveStatus() {
   else { el.textContent = 'All changes saved'; el.className = 'save-status'; }
 }
 
-const nodeById = (id) => state.board?.nodes.find((n) => n.id === id);
+const nodeById = (id) => state.board?.flow.nodes.find((n) => n.id === id);
 const visible = (node) => !(state.hideRejected && node.status === 'rejected');
 
 function ago(iso) {
@@ -92,7 +92,7 @@ function toWorld(clientX, clientY) {
 }
 
 function fit() {
-  const nodes = state.board.nodes.filter(visible);
+  const nodes = state.board.flow.nodes.filter(visible);
   if (!nodes.length) { state.view = { x: 80, y: 80, k: 1 }; applyView(); return; }
   const rects = nodes.map(rectOf);
   const minX = Math.min(...rects.map((r) => r.x)), minY = Math.min(...rects.map((r) => r.y));
@@ -179,7 +179,7 @@ function nodeHtml(node) {
 
 function renderNodes() {
   const seen = new Set();
-  for (const node of state.board.nodes) {
+  for (const node of state.board.flow.nodes) {
     if (!visible(node)) continue;
     seen.add(node.id);
     let el = nodeEls.get(node.id);
@@ -199,7 +199,7 @@ function renderNodes() {
     }
   }
   for (const [id, el] of nodeEls) if (!seen.has(id)) { el.remove(); nodeEls.delete(id); }
-  $('#empty').hidden = state.board.nodes.length > 0;
+  $('#empty').hidden = state.board.flow.nodes.length > 0;
 }
 
 function flash(id) {
@@ -297,7 +297,7 @@ function edgeElement(pathD, mid, label, cls) {
 
 function renderEdges(draft) {
   edgeLayer.replaceChildren();
-  for (const edge of state.board.edges) {
+  for (const edge of state.board.flow.edges) {
     const a = nodeById(edge.from), b = nodeById(edge.to);
     if (!a || !b || !visible(a) || !visible(b)) continue;
     const { s, t, sd, td } = anchors(rectOf(a), rectOf(b));
@@ -361,7 +361,7 @@ function renderPanel(force = false) {
   if (!force && panel.contains(active) && active.matches('input, textarea') && !state.focusTitle) { state.panelDirty = true; return; }
   const sel = state.selected;
   if (sel?.kind === 'node' && nodeById(sel.id)) return renderNodePanel(nodeById(sel.id));
-  if (sel?.kind === 'edge' && state.board.edges.some((e) => e.id === sel.id)) return renderEdgePanel(state.board.edges.find((e) => e.id === sel.id));
+  if (sel?.kind === 'edge' && state.board.flow.edges.some((e) => e.id === sel.id)) return renderEdgePanel(state.board.flow.edges.find((e) => e.id === sel.id));
   if (state.briefOpen) return renderBriefPanel();
   panel.hidden = true;
   panel.replaceChildren();
@@ -434,8 +434,8 @@ function toggleBrief(open = !state.briefOpen) {
 
 function renderNodePanel(node) {
   const b = state.board;
-  const out = b.edges.filter((e) => e.from === node.id);
-  const inc = b.edges.filter((e) => e.to === node.id);
+  const out = b.flow.edges.filter((e) => e.from === node.id);
+  const inc = b.flow.edges.filter((e) => e.to === node.id);
   const link = (dir, otherId, label) => {
     const other = nodeById(otherId);
     return `<li><span class="dir">${dir}</span><button class="goto" data-goto="${otherId}">${escapeHtml(other?.title ?? '?')}</button>${label ? `<span class="lbl">${escapeHtml(label)}</span>` : ''}</li>`;
@@ -588,7 +588,7 @@ function renderTop() {
   const title = $('#board-title');
   if (document.activeElement !== title) title.value = state.board.title;
   document.title = `${state.board.title} · Idea board`;
-  const count = (s) => state.board.nodes.filter((n) => n.status === s).length;
+  const count = (s) => state.board.flow.nodes.filter((n) => n.status === s).length;
   $('#counts').innerHTML = `<b>${count('idea')}</b> ideas · <b>${count('accepted')}</b> accepted · <b>${count('rejected')}</b> rejected`;
 }
 
@@ -637,10 +637,10 @@ function connect() {
     if (event.type === 'board') {
       const firstLoad = !state.board;
       state.board = event.board;
-      if (state.selected && !(state.selected.kind === 'node' ? nodeById(state.selected.id) : state.board.edges.some((e) => e.id === state.selected.id))) state.selected = null;
+      if (state.selected && !(state.selected.kind === 'node' ? nodeById(state.selected.id) : state.board.flow.edges.some((e) => e.id === state.selected.id))) state.selected = null;
       render();
       if ((firstLoad && !localStorage.getItem('idea-board-view')) || state.fitNext) { state.fitNext = false; fit(); }
-      if (event.author === 'claude' && event.changed) flash(event.changed);
+      if (event.author === 'claude') event.changed.forEach(flash);
     } else if (event.type === 'agent') {
       state.agent = event.state === 'error' ? 'idle' : event.state;
       if (event.state === 'error') state.notices.push({ at: new Date().toISOString(), text: `Claude could not answer: ${event.message}` });
