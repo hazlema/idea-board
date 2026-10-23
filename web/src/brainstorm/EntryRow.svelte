@@ -25,6 +25,26 @@
   }
 
   /**
+   * A colon ends a label, as Enter does: a label typed or pasted as "Skill: Throw Dart"
+   * is the label "Skill" and the text "Throw Dart". Null when there is no colon.
+   */
+  export function splitLabel(value: string, colon = value.indexOf(':')): { label: string; text: string } | null {
+    if (colon === -1) return null;
+    return { label: value.slice(0, colon), text: value.slice(colon + 1).trim() };
+  }
+
+  /**
+   * Where the colon just typed or pasted into a label is, or -1. Only a new colon
+   * ends the label: one already in a label (Claude's, or from before) stays.
+   * `caret` is the cursor after the edit, just past what was inserted.
+   */
+  export function addedColon(before: string, after: string, caret: number): number {
+    const start = Math.max(0, caret - (after.length - before.length));
+    const colon = after.indexOf(':', start);
+    return colon !== -1 && colon < caret ? colon : -1;
+  }
+
+  /**
    * The moveEntry that puts `entryId` where it was dropped, or null when it would stay put
    * (dropped on its own row, next to where it is, or on nothing).
    */
@@ -123,6 +143,17 @@
     void live.send({ type: 'deleteEntry', groupId: group.id, entryId: entry.id });
   }
 
+  function labelInput(field: HTMLTextAreaElement): void {
+    const value = field.value.replace(/\n/g, ' ');
+    const split = splitLabel(value, addedColon(label.shown, value, field.selectionStart));
+    if (!split) return label.input(value);
+    // The draft may already hold this label (a colon typed at its end), so the field is set by hand.
+    field.value = split.label;
+    label.input(split.label);
+    if (split.text) text.input(text.shown ? `${split.text} ${text.shown}` : split.text);
+    textField?.focus();
+  }
+
   function labelKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.isComposing) return;
     event.preventDefault();
@@ -211,7 +242,7 @@
           class="field-sizing-content max-w-full min-w-[2ch] shrink resize-none overflow-hidden rounded-sm bg-transparent p-0 leading-[1.45] font-semibold [overflow-wrap:anywhere] outline-none focus:bg-ink/60"
           use:autogrow={label.shown}
           {...label.attrs}
-          oninput={(e) => label.input(e.currentTarget.value.replace(/\n/g, ' '))}
+          oninput={(e) => labelInput(e.currentTarget)}
           onfocus={() => {
             label.focus();
             point();

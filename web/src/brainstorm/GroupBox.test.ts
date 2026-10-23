@@ -245,6 +245,44 @@ test('+ add item adds an entry once it has a label', async () => {
   expect(api.op).toHaveBeenCalledWith({ type: 'addEntry', groupId: 'o_wiz', label: 'Spells', text: '' });
 });
 
+test('a colon ends a new item\'s label, as Enter does; what follows it is the text', async () => {
+  const g = onBoard(group([]));
+  vi.mocked(api.op).mockResolvedValue({ entry: entry('en_new', 'Skill', 'Throw Dart') });
+  render(GroupBox, { group: g });
+  await fireEvent.click(screen.getByRole('button', { name: '+ add item' }));
+  const label = screen.getByPlaceholderText('Label');
+  await fireEvent.input(label, { target: { value: 'Skill: Throw Dart' } });
+  expect(api.op).toHaveBeenCalledWith({ type: 'addEntry', groupId: 'o_wiz', label: 'Skill', text: 'Throw Dart' });
+});
+
+test('once a new item arrives, its text takes the cursor', async () => {
+  const g = onBoard(group([]));
+  vi.mocked(api.op).mockResolvedValue({ entry: entry('en_new', 'Skill', '') });
+  const { rerender } = render(GroupBox, { group: g });
+  await fireEvent.click(screen.getByRole('button', { name: '+ add item' }));
+  await fireEvent.input(screen.getByPlaceholderText('Label'), { target: { value: 'Skill:' } });
+  expect(api.op).toHaveBeenCalledWith({ type: 'addEntry', groupId: 'o_wiz', label: 'Skill', text: '' });
+  await vi.advanceTimersByTimeAsync(0);
+  await rerender({ group: onBoard(group([entry('en_new', 'Skill', '')])) });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(within(screen.getByTestId('entry-en_new')).getByRole('textbox', { name: 'Text' })).toHaveFocus();
+});
+
+test('a colon typed in a label moves to the text; anything after it goes at the front of the text', async () => {
+  const g = onBoard(group([entry('en_a', 'Skill', 'when cornered')]));
+  render(GroupBox, { group: g });
+  const label = screen.getByDisplayValue('Skill') as HTMLTextAreaElement;
+  const text = screen.getByDisplayValue('when cornered') as HTMLTextAreaElement;
+  label.focus();
+  await fireEvent.input(label, { target: { value: 'Skill: Throw Dart' } });
+  expect(label.value).toBe('Skill');
+  expect(text).toHaveFocus();
+  expect(text.value).toBe('Throw Dart when cornered');
+  await vi.advanceTimersByTimeAsync(600);
+  expect(api.op).toHaveBeenCalledWith({ type: 'updateEntry', groupId: 'o_wiz', entryId: 'en_a', text: 'Throw Dart when cornered' });
+  expect(api.op).not.toHaveBeenCalledWith(expect.objectContaining({ label: expect.stringContaining(':') }));
+});
+
 test('a wiggle on the drag handle, or a drop back on its own row, moves nothing', async () => {
   const g = onBoard(group([entry('en_a', 'Familiars', ''), entry('en_b', 'Magic', ''), entry('en_c', 'Towers', '')]));
   render(GroupBox, { group: g });

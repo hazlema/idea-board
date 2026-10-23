@@ -15,7 +15,7 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import EntryRow, { entryDrop } from './EntryRow.svelte';
+  import EntryRow, { entryDrop, splitLabel } from './EntryRow.svelte';
   import { autogrow, drag as dragAction, outside, resize as resizeAction, type DragOptions, type ResizeOptions } from '$lib/actions';
   import { Draft } from '$lib/draft.svelte';
   import { live } from '$lib/live.svelte';
@@ -67,7 +67,11 @@
     const id = focusEntry;
     if (!id || !group.entries.some((e) => e.id === id)) return;
     focusEntry = null;
-    void tick().then(() => root?.querySelector<HTMLTextAreaElement>(`[data-entry-id="${id}"] textarea`)?.focus());
+    void tick().then(() => {
+      const field = root?.querySelector<HTMLTextAreaElement>(`[data-entry-id="${id}"] textarea[aria-label="Text"]`);
+      field?.focus();
+      field?.setSelectionRange(field.value.length, field.value.length);
+    });
   });
 
   function recolor(color: Color): void {
@@ -82,14 +86,22 @@
     root?.querySelector<HTMLInputElement>('[data-new-entry]')?.focus();
   }
 
-  async function commitNew(): Promise<void> {
+  async function commitNew(label = newLabel, text = ''): Promise<void> {
     if (!adding) return;
     adding = false;
-    const label = newLabel.trim();
     newLabel = '';
+    label = label.trim();
     if (!label) return;
-    const result = (await live.send({ type: 'addEntry', groupId: group.id, label, text: '' })) as { entry?: Entry } | null;
+    const result = (await live.send({ type: 'addEntry', groupId: group.id, label, text })) as { entry?: Entry } | null;
     if (result?.entry) focusEntry = result.entry.id;
+  }
+
+  function newInput(): void {
+    const split = splitLabel(newLabel);
+    if (!split) return;
+    // A colon before any label has nothing to end.
+    if (!split.label.trim()) newLabel = newLabel.replace(':', '');
+    else void commitNew(split.label, split.text);
   }
 
   function newKeydown(event: KeyboardEvent): void {
@@ -184,8 +196,9 @@
           aria-label="New item label"
           class="min-w-0 flex-1 rounded-sm bg-ink/50 p-0 leading-[1.45] font-semibold outline-none"
           bind:value={newLabel}
+          oninput={newInput}
           onkeydown={newKeydown}
-          onblur={commitNew}
+          onblur={() => commitNew()}
         />
       </li>
     {/if}

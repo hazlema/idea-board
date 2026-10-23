@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Entry, Group } from '$lib/types';
-import { entryMove, labelStacks } from './EntryRow.svelte';
+import { addedColon, entryMove, labelStacks } from './EntryRow.svelte';
 
 const entry = (id: string): Entry => ({ id, label: id, text: '', check: 'none', ruledOut: false, author: 'user', claudeAdded: false });
 const group = (id: string, ids: string[]): Group => ({
@@ -53,6 +53,17 @@ test('no drop target, or one that has gone, means no move', () => {
   expect(entryMove(groups, 'towers', { groupId: null, entryId: null, after: false })).toBeNull();
   expect(entryMove(groups, 'towers', { groupId: 'gone', entryId: null, after: false })).toBeNull();
   expect(entryMove(groups, 'towers', { groupId: 'trolls', entryId: 'gone', after: false })).toBeNull();
+});
+
+test('only a colon just typed or pasted into a label ends it', () => {
+  // Typed at the end, or pasted with the text after it.
+  expect(addedColon('Skill', 'Skill:', 6)).toBe(5);
+  expect(addedColon('', 'Skill: Throw Dart', 17)).toBe(5);
+  // A colon already there stays put while the label is edited around it.
+  expect(addedColon('Forage: Pick Herbs', 'Forage: Pick Herbsx', 19)).toBe(-1);
+  expect(addedColon('Forage: Pick Herbs', 'Xorage: Pick Herbs', 1)).toBe(-1);
+  // A new colon after an old one is the one that counts.
+  expect(addedColon('Forage: Pick Herbs', 'Forage: Pick Herbs:', 19)).toBe(18);
 });
 
 test('a label stacks above its text only while it leaves too little room beside it', () => {
