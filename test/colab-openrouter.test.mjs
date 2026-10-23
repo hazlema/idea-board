@@ -77,3 +77,27 @@ test('readKey prefers the environment, then the key file', () => {
   assert.equal(readKey({ OPENROUTER_API_KEY: ' abc ' }, '/nonexistent'), 'abc');
   assert.equal(readKey({}, '/nonexistent'), null);
 });
+
+test('a reply body that drops mid-read is retried like a dropped connection', async () => {
+  const sleeps = [];
+  let calls = 0;
+  const fetch = async () => (++calls === 1 ? { ok: true, status: 200, text: async () => { throw new TypeError('terminated'); } } : OK);
+  const client = new OpenRouter({ key: 'k', fetch, sleep: async (ms) => sleeps.push(ms) });
+  assert.equal((await client.complete(args)).message.content, 'hi');
+  assert.deepEqual(sleeps, [2000]);
+  const dead = new OpenRouter({ key: 'k', fetch: async () => ({ ok: true, status: 200, text: async () => { throw new TypeError('terminated'); } }), sleep: async () => {} });
+  await assert.rejects(dead.complete(args), (e) => e instanceof OpenRouterError && e.status === 0 && /terminated/.test(e.message));
+});
+
+test('each attempt has a time limit, and a timeout is retried', async () => {
+  const signals = [];
+  let calls = 0;
+  const fetch = async (url, init) => {
+    signals.push(init.signal);
+    if (++calls === 1) throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+    return OK;
+  };
+  const client = new OpenRouter({ key: 'k', fetch, sleep: async () => {} });
+  assert.equal((await client.complete(args)).message.content, 'hi');
+  assert.ok(signals.every((s) => s instanceof AbortSignal));
+});

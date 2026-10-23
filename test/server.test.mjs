@@ -333,3 +333,26 @@ test('start with an empty line-up is 400 and stop returns idle', async () => {
     assert.equal((await (await fetch(`${base}/api/colab`)).json()).status.state, 'idle');
   }, { colab: factory });
 });
+
+test('a new event stream starts with the board and the current run status', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base }) => {
+    const ctl = new AbortController();
+    const res = await fetch(`${base}/api/events`, { signal: ctl.signal });
+    const reader = res.body.getReader();
+    let seen = '';
+    while (!seen.includes('"type":"colab"')) seen += new TextDecoder().decode((await reader.read()).value);
+    ctl.abort();
+    const events = seen.split('\n\n').filter((c) => c.startsWith('data: ')).map((c) => JSON.parse(c.slice(6)));
+    assert.deepEqual(events.map((e) => e.type), ['board', 'colab']);
+    assert.equal(events[1].status.state, 'idle');
+  }, { colab: factory });
+});
+
+test('start without a key does not tell the host to restart', async () => {
+  const none = colabFor({ key: null });
+  await withServer(async ({ base }) => {
+    const body = await (await post(base, '/api/colab/start')).json();
+    assert.doesNotMatch(body.error, /restart/);
+  }, { colab: none.factory });
+});

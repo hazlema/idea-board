@@ -124,7 +124,10 @@
         class="rounded-md border bg-raised p-2 {isCurrent(agent) ? 'border-accent' : 'border-line'}"
         aria-current={isCurrent(agent) ? 'true' : undefined}
         ondragover={(e) => e.preventDefault()}
-        ondrop={() => drop(i)}
+        ondrop={(e) => {
+          e.preventDefault();
+          drop(i);
+        }}
       >
         <div class="mb-1 flex items-center gap-2">
           <!-- Only the grip drags, so text in the model box can still be selected (Firefox). -->
@@ -133,7 +136,10 @@
             role="presentation"
             title={canEdit ? 'Drag to reorder' : undefined}
             draggable={canEdit}
-            ondragstart={() => (dragFrom = i)}
+            ondragstart={(e) => {
+              e.dataTransfer?.setData('text/plain', String(i));
+              dragFrom = i;
+            }}
             ondragend={() => (dragFrom = null)}>{canEdit ? '⠿' : ''}</span
           >
           <span class="font-semibold text-text">{i + 1}</span>

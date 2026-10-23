@@ -121,3 +121,20 @@ test('an out-of-range rounds value is clamped, sent, and shown clamped', async (
   expect(rounds).toHaveValue(50);
   expect(lastLineup()).toMatchObject({ type: 'setColabLineup', rounds: 50 });
 });
+
+test('dragging a grip onto another card reorders the line-up', async () => {
+  live.board = emptyBoard();
+  live.board.colab.lineup.agents = [
+    { model: 'google/gemini-4-argon', roleId: 'creative', settings: {} },
+    { model: 'openai/gpt-6.1-sol', roleId: 'qa', settings: {} },
+  ];
+  render(AgentsPanel);
+  const grips = screen.getAllByTitle('Drag to reorder');
+  const cards = screen.getAllByRole('listitem');
+  const dataTransfer = { setData: vi.fn() };
+  await fireEvent.dragStart(grips[0], { dataTransfer });
+  await fireEvent.dragOver(cards[1], { dataTransfer });
+  await fireEvent.drop(cards[1], { dataTransfer });
+  expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', '0');
+  expect(lastLineup()).toMatchObject({ agents: [{ model: 'openai/gpt-6.1-sol' }, { model: 'google/gemini-4-argon' }] });
+});

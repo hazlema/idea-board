@@ -204,7 +204,7 @@ test('recoverAfterRestart reports a cut-short run and clears it', () => {
   const { store, run } = setup({ complete: () => text('x') });
   store.setColabRun({ round: 2, spent: 0.61 });
   run.recoverAfterRestart();
-  assert.match(store.board.chat.at(-1).text, /after round 2; \$0\.61 spent/);
+  assert.match(store.board.chat.at(-1).text, /during round 2; \$0\.61 spent/);
   assert.equal(store.board.colab.run, null);
 });
 
@@ -217,4 +217,52 @@ test('entering running saves the run at once, so a restart during turn one is no
   assert.deepEqual(store.board.colab.run, { round: 1, spent: 0 });
   await run.finished;
   assert.deepEqual(seen, { round: 1, spent: 0 });
+});
+
+test('spend inside a turn is saved and announced per call', async () => {
+  const { store, run } = setup({ agents: [A], rounds: 1, complete: noteThenDone });
+  const spends = [];
+  store.subscribe((e) => e.type === 'colab' && spends.push(e.status.spent));
+  const saved = [];
+  const real = store.setColabRun.bind(store);
+  store.setColabRun = (v) => (saved.push(v?.spent), real(v));
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.ok(spends.includes(0.1) && spends.some((s) => Math.abs(s - 0.2) < 1e-9));
+  assert.ok(saved.includes(0.1));
+});
+
+test('display names prefer the OpenRouter name without its provider prefix', async () => {
+  const { run, store } = setup({ complete: noteThenDone });
+  run.openrouter.models = async () => [{ id: 'acme/alpha-one', name: 'Acme: Y Large' }];
+  await run.prepare();
+  run.start();
+  const [a, b] = store.board.colab.roster;
+  assert.equal(a.modelName, 'Y Large');
+  assert.equal(b.modelName, 'Beta Two');
+  const off = setup({ complete: noteThenDone });
+  off.run.openrouter.models = async () => { throw new Error('offline'); };
+  await off.run.prepare();
+  off.run.start();
+  assert.equal(off.store.board.colab.roster[0].modelName, 'Alpha One');
+});
+
+test('run notes answer nothing, so earlier host messages stay unhandled', () => {
+  const { store, run } = setup({ complete: () => text('x') });
+  const m = hostSays(store, 'hello').message;
+  store.setColabRun({ round: 1, spent: 0 });
+  run.recoverAfterRestart();
+  assert.equal(store.board.chat.find((c) => c.id === m.id).handled, false);
+});
+
+test('a reply over 20 000 characters is posted cut, not lost', async () => {
+  const { store, run } = setup({ agents: [A], rounds: 1, complete: () => text('x'.repeat(25_000)) });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  const post = chatPosts(store)[0].text;
+  assert.ok(post.length < 20_000 && post.endsWith('… (cut)'));
 });

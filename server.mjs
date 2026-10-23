@@ -100,8 +100,8 @@ async function colabRoute(run, pathname, req, res) {
     catch (error) { fail(error); }
   } else if (pathname === '/api/colab/start' && req.method === 'POST') {
     if (run.status.state !== 'idle') return sendJson(res, 409, { error: 'an agent run is already in progress' }), true;
-    if (!openrouter.hasKey()) return sendJson(res, 400, { error: 'No OpenRouter key found. Set OPENROUTER_API_KEY or put the key in ~/.config/openrouter/key, then restart.' }), true;
-    try { run.start(); sendJson(res, 200, { status: run.status }); }
+    if (!openrouter.hasKey()) return sendJson(res, 400, { error: 'No OpenRouter key found. Set OPENROUTER_API_KEY or put the key in ~/.config/openrouter/key.' }), true;
+    try { await run.prepare(); run.start(); sendJson(res, 200, { status: run.status }); }
     catch (error) { fail(error); }
   } else if (pathname === '/api/colab/stop' && req.method === 'POST') {
     run.stop();
@@ -142,6 +142,7 @@ export function createServer({ store, agent, presence, colab, port, distDir = DI
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
         const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
         send({ type: 'board', board: store.board });
+        if (colab) send({ type: 'colab', status: colab.status });
         const unsubscribe = store.subscribe(send);
         const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
         req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });

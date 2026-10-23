@@ -69,3 +69,8 @@ test('stripSelfTag drops only a tag naming this agent', () => {
   assert.equal(stripSelfTag('Idea: hi', 'Y · QA'), 'Idea: hi');
   assert.equal(stripSelfTag('**X · Creative:** Hi', 'Y · QA'), '**X · Creative:** Hi');
 });
+
+test('the turn rules say the final reply is posted for the agent', async () => {
+  const { TURN_RULES } = await import('../lib/colab/prompts.mjs');
+  assert.match(TURN_RULES, /no tool call/);
+});
