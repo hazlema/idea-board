@@ -79,6 +79,45 @@ watch the board change while you talk: drag it by its title bar, resize it from
 the corner, and close it with **✕** to put it back in the tab. The text size and
 where you left the window are remembered in this browser.
 
+#### Agents
+
+Besides Claude, you can have other models talk about the board with you and
+with each other. Pick OpenRouter models in the **Agents** panel, give each a
+role, press **Start**, then post your first message. The agents take turns,
+one turn each per round, and change the board the same way Claude does.
+
+- **+ Add agent** adds a card. Pick the model from a searchable list (only
+  models that support tools, with the price per million tokens) and a role.
+  Drag the grip to reorder (the order is the turn order); **✕** removes a card.
+- Set the number of **rounds** and a **budget** in dollars. **Start** begins a
+  run; **Stop** ends it after the current turn.
+- The card whose turn it is lights up, and the chat header reads "Round 2 of
+  5 · <model>'s turn". Spend shows as "$0.42 of $5".
+- **Edit roles…** opens the role editor. It starts with four roles (Creative
+  Director & Lore, QA & Playtester, Foreman, Systems Designer) and the shared
+  rules every agent follows. Each has text for every board (saved in
+  `~/.config/idea-board/colab.json` on Linux, the platform's config folder
+  elsewhere) and **Extra for this board** (saved in the board file). Edits
+  apply from the next turn.
+
+Each agent posts in the chat as "Model · Role". What it adds is marked
+"<name> added" with **Keep** and **Dismiss**, and History and Ruled out show
+its name. Each agent turn is one undoable turn.
+
+**The key.** Agents need an OpenRouter key, from `OPENROUTER_API_KEY` or the
+file `~/.config/openrouter/key`. It stays on the server and is never sent to
+the page. If it is missing, the panel shows the exact command that saves it:
+
+```bash
+mkdir -p ~/.config/openrouter && read -rs -p "OpenRouter key: " k && printf '%s' "$k" > ~/.config/openrouter/key && chmod 600 ~/.config/openrouter/key; unset k; echo
+```
+
+**Cost.** Every model call costs money. A run stops when it reaches its
+budget, which is checked before each turn. The background Claude doesn't
+answer chat messages while a run is going. If the server restarts mid-run,
+the run ends and a note in the chat says how far it got; press **Start**
+again.
+
 ### Brief
 
 Free-form text boxes with headings: what you are building, goals, decisions,
