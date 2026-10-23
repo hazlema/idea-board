@@ -202,3 +202,12 @@ export function objectLabel(o: BObject): string {
       return o.text;
   }
 }
+
+/** The brainstorm object with this id, on any page. */
+export function findObject(board: Board | null, id: string): BObject | undefined {
+  for (const page of board?.brainstorm.pages ?? []) {
+    const found = page.objects.find((o) => o.id === id);
+    if (found) return found;
+  }
+  return undefined;
+}

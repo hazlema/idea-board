@@ -10,3 +10,8 @@ export function ago(iso: string, now = Date.now()): string {
 }
 
 export const whoName = (author: Author): string => (author === 'claude' ? 'Claude' : 'You');
+
+/** The first non-blank line of `text`, trimmed and cut to `max` characters (for "Talking about" labels). */
+export function firstLine(text: string, max = 60): string {
+  return (text.split('\n').find((line) => line.trim()) ?? '').trim().slice(0, max);
+}

@@ -4,16 +4,11 @@
   import TopBar from './components/TopBar.svelte';
   import ChatDock from './components/ChatDock.svelte';
   import Toast from './components/Toast.svelte';
+  import BrainstormView from './views/BrainstormView.svelte';
   import BriefView from './views/BriefView.svelte';
   import FlowchartView from './views/FlowchartView.svelte';
 
   onMount(() => live.connect());
-
-  const PLACEHOLDERS = {
-    brainstorm: { name: 'Brainstorm', hint: 'Groups, notes and pictures go on this canvas.' },
-  } as const;
-
-  const placeholder = $derived(live.view === 'brainstorm' ? PLACEHOLDERS.brainstorm : null);
 </script>
 
 <div class="flex h-full flex-col">
@@ -22,16 +17,13 @@
   <main class="flex min-h-0 flex-1">
     {#if live.board && live.view === 'brief'}
       <BriefView />
+    {:else if live.board && live.view === 'brainstorm'}
+      <BrainstormView />
     {:else if live.board && live.view === 'flowchart'}
       <FlowchartView />
     {:else}
-      <section class="flex flex-1 flex-col items-center justify-center gap-1 text-muted" aria-label={placeholder?.name ?? 'Brief'}>
-        {#if live.board && placeholder}
-          <h2 class="text-lg font-semibold text-text">{placeholder.name}</h2>
-          <p>{placeholder.hint}</p>
-        {:else}
-          <p>Connecting…</p>
-        {/if}
+      <section class="flex flex-1 flex-col items-center justify-center gap-1 text-muted" aria-label="Loading">
+        <p>Connecting…</p>
       </section>
     {/if}
     <!-- Right panel (Memory) goes here once it exists. -->
