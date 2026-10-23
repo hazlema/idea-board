@@ -15,13 +15,13 @@ const V2_TOOLS = [
   'rule_out', 'bring_back',
   'add_node', 'update_node', 'delete_node', 'connect', 'update_connection', 'disconnect', 'tidy_layout', 'rename_board',
   'undo_reply', 'save_version', 'restore_version', 'export_design_doc',
-  'reply', 'wait_for_chat',
+  'reply', 'wait_for_chat', 'batch',
 ];
 
 test('initialize reports v2 and tools/list covers the full v2 tool set', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
   assert.equal(init.result.serverInfo.version, '0.2.0');
-  assert.equal(init.result.instructions, 'A shared idea board you and the user both edit: Brief (what you are building), Brainstorm (groups, notes, pictures, topics, links) and Flowchart (cards and arrows). Call view_board first and read ruled_out: never re-propose anything on it; if a tool result flags a resemblance, tell the user. Record rejections the user states with rule_out. You may change anything; every change is visible and undoable. Use wait_for_chat to listen to the board chat.');
+  assert.equal(init.result.instructions, 'A shared idea board you and the user both edit: Brief (what you are building), Brainstorm (groups, notes, pictures, topics, links) and Flowchart (cards and arrows). Call view_board first and read ruled_out: never re-propose anything on it; if a tool result flags a resemblance, tell the user. Record rejections the user states with rule_out. You may change anything; every change is visible and undoable. Use batch to make several changes in one call. Use wait_for_chat to listen to the board chat; it also reports what the user changed on the board since you last looked.');
   const { tools } = (await rpc('tools/list', {})).result;
   const names = tools.map((t) => t.name);
   for (const name of V2_TOOLS) assert.ok(names.includes(name), name);
@@ -301,4 +301,97 @@ test('add_picture_from_url ingests the picture and places it', () => withServer(
   assert.equal(seenPicture.caption, 'Old wizard');
   assert.deepEqual([seenPicture.x, seenPicture.y, seenPicture.w, seenPicture.h], [object.x, object.y, object.w, object.h]);
   assert.match((await call('add_picture_from_url', { url: 'file:///etc/passwd' })).error, /http/);
+}));
+
+test('update_entry, delete_entry and rule_out need only the entry id', () => withServer(async ({ call }) => {
+  const group = await call('add_group', { title: 'Attacks', entries: [{ label: 'Life Drain' }, { label: 'Bite' }, { label: 'Hex' }] });
+  const [drain, bite, hex] = group.entries;
+  const updated = await call('update_entry', { entry_id: drain.id, text: 'heals the caster', check: 'open' });
+  assert.equal(updated.group_id, group.id);
+  assert.equal(updated.text, 'heals the caster');
+  // A group_id that does not hold the entry is still an error.
+  const other = await call('add_group', { title: 'Other' });
+  assert.match((await call('update_entry', { entry_id: drain.id, group_id: other.id, label: 'x' })).error, /no entry/);
+  assert.match((await call('update_entry', { entry_id: 'en_nope', label: 'x' })).error, /no entry with id en_nope/);
+  assert.match((await call('update_entry', { label: 'x' })).error, /entry_id is required/);
+  await call('delete_entry', { entry_id: bite.id });
+  const ruled = await call('rule_out', { reason: 'too strong', target: { kind: 'entry', entryId: hex.id } });
+  assert.match(ruled.text, /Hex/);
+  const [g] = (await call('view_board', {})).brainstorm.groups.filter((x) => x.id === group.id);
+  assert.deepEqual(g.entries.map((e) => e.label), ['Life Drain']);
+  assert.deepEqual(g.ruled_out_entries.map((e) => e.label), ['Hex']);
+}));
+
+test('add_node can be placed with near or x and y', () => withServer(async ({ call, store }) => {
+  const a = await call('add_node', { title: 'A' });
+  const placed = await call('add_node', { title: 'Placed', x: 900, y: 450 });
+  const node = (id) => store.board.flow.nodes.find((n) => n.id === id);
+  assert.deepEqual([node(placed.id).x, node(placed.id).y], [900, 450]);
+  const beside = await call('add_node', { title: 'Beside', near: placed.id });
+  assert.ok(node(beside.id).x > 900 && node(beside.id).y === 450, 'right of the card it is near');
+  assert.equal(store.board.flow.edges.length, 0, 'near does not connect');
+  // near wins over connect_from for placement; the arrow still comes from connect_from.
+  const both = await call('add_node', { title: 'Both', connect_from: a.id, near: placed.id });
+  assert.ok(node(both.id).x > 900);
+  assert.deepEqual(store.board.flow.edges.map((e) => [e.from, e.to]), [[a.id, both.id]]);
+  // An unknown card is refused before anything is added.
+  const before = store.board.flow.nodes.length;
+  assert.match((await call('add_node', { title: 'Lost', near: 'n_nope' })).error, /no node with id n_nope/);
+  assert.match((await call('add_node', { title: 'Lost', connect_from: 'n_nope' })).error, /no node with id n_nope/);
+  assert.equal(store.board.flow.nodes.length, before);
+}));
+
+test('batch runs calls in order and passes ids along', () => withServer(async ({ call, store }) => {
+  const result = await call('batch', { calls: [
+    { tool: 'add_group', args: { title: 'Attacks' } },
+    { tool: 'add_entry', args: { group_id: '$0.id', label: 'Life Drain', text: 'heals' } },
+    { tool: 'update_entry', args: { entry_id: '$1.id', check: 'done' } },
+    { tool: 'add_brief_section', args: { title: 'Combat', text: 'Drain heals' } },
+    { tool: 'add_node', args: { title: 'Drain', props: { cost: '2' } } },
+    { tool: 'update_node', args: { id: '$4.id', notes: 'heals the caster' } },
+  ] });
+  assert.equal(result.failed, undefined);
+  assert.deepEqual(result.results.map((r) => r.tool), ['add_group', 'add_entry', 'update_entry', 'add_brief_section', 'add_node', 'update_node']);
+  assert.equal(result.results[2].result.check, 'done');
+  const [group] = store.board.brainstorm.pages[0].objects;
+  assert.deepEqual(group.entries.map((e) => [e.label, e.check]), [['Life Drain', 'done']]);
+  assert.equal(store.board.flow.nodes[0].notes, 'heals the caster');
+  // All of it is one reply's worth of changes, so undo_reply takes it back at once.
+  const turns = new Set(store.history({ limit: 10 }).entries.map((e) => e.turn));
+  assert.equal(turns.size, 1);
+}));
+
+test('batch stops at the first error and says what ran', () => withServer(async ({ call, store }) => {
+  const result = await call('batch', { calls: [
+    { tool: 'add_note', args: { text: 'kept' } },
+    { tool: 'update_entry', args: { entry_id: 'en_nope', label: 'x' } },
+    { tool: 'add_note', args: { text: 'never' } },
+  ] });
+  assert.equal(result.results.length, 1);
+  assert.deepEqual(result.failed, { index: 1, tool: 'update_entry', error: 'no entry with id en_nope' });
+  assert.equal(result.not_run, 1);
+  assert.deepEqual(store.board.brainstorm.pages[0].objects.map((o) => o.text), ['kept']);
+  assert.match((await call('batch', { calls: [{ tool: 'wait_for_chat', args: {} }] })).failed.error, /can't run inside a batch/);
+  assert.match((await call('batch', { calls: [{ tool: 'add_note', args: { text: '$3.id' } }] })).failed.error, /has not run yet/);
+  assert.match((await call('batch', { calls: [{ tool: 'add_note', args: { text: 'a' } }, { tool: 'add_note', args: { text: '$0.nope' } }] })).failed.error, /returned no nope/);
+  assert.match((await call('batch', { calls: [] })).error, /non-empty/);
+}));
+
+test('wait_for_chat reports what the user changed on the board since Claude last looked', () => withServer(async ({ call, userOp }) => {
+  const group = await call('add_group', { title: 'Attacks', entries: [{ label: 'Life Drain' }] });
+  await call('view_board', {});
+  // Claude's own edits are not news to Claude.
+  await call('add_note', { text: 'mine' });
+  const res = await userOp({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, text: 'now costs health' });
+  assert.equal(res.status, 200);
+  const waited = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.equal(waited.messages.length, 0);
+  assert.equal(waited.board_changes.length, 1);
+  assert.match(waited.board_changes[0].summary, /edited “Life Drain” in “?Attacks/);
+  assert.ok(waited.board_changes[0].ids.includes(group.entries[0].id));
+  assert.match(waited.next, /changed the board/);
+  // Seen once, not again.
+  const again = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.deepEqual(again.board_changes, []);
+  assert.equal(again.next, 'No new messages. Call wait_for_chat again to keep listening.');
 }));
