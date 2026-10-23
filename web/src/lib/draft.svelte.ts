@@ -47,7 +47,9 @@ export class Draft {
         if (this.#inFlight === 0 || same(this.#value, server)) this.#value = null;
       });
     });
-    onDestroy(() => void this.flush());
+    // Saved just after the component goes: during teardown Svelte still shows the
+    // old board, so an item deleted in this very update would still look alive.
+    onDestroy(() => queueMicrotask(() => void this.flush()));
   }
 
   /** What the field shows. */

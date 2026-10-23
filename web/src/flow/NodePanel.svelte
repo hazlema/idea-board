@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { Draft } from '$lib/draft.svelte';
   import { ago, whoName } from '$lib/format';
   import { live } from '$lib/live.svelte';
@@ -28,13 +28,18 @@
   let propsList: HTMLDivElement | undefined = $state();
   let lastSentProps: string | null = null;
 
+  // The panel belongs to one card for its whole life: its saves, and any retries
+  // after it closes, go to that card, never to whichever card is selected now.
+  const nodeId = untrack(() => node.id);
+  const current = (): FlowNode | undefined => live.board?.flow.nodes.find((n) => n.id === nodeId);
+
   // Saving a card that is gone (deleted meanwhile) has nothing left to do.
   const update = (fields: { title?: string; notes?: string; props?: FlowProp[] }): Promise<unknown> =>
-    live.board?.flow.nodes.some((n) => n.id === node.id) ? live.send({ type: 'updateNode', id: node.id, ...fields }) : Promise.resolve({});
+    current() ? live.send({ type: 'updateNode', id: nodeId, ...fields }) : Promise.resolve({});
 
   // A card keeps its title: an empty one is simply not sent.
-  const title = new Draft({ server: () => node.title, save: (v) => update({ title: v }), delay: 400, valid: (v) => v.trim() !== '' });
-  const notes = new Draft({ server: () => node.notes, save: (v) => update({ notes: v }), delay: 500 });
+  const title = new Draft({ server: () => current()?.title ?? '', save: (v) => update({ title: v }), delay: 400, valid: (v) => v.trim() !== '' });
+  const notes = new Draft({ server: () => current()?.notes ?? '', save: (v) => update({ notes: v }), delay: 500 });
 
   const shownProps = $derived(propsDraft ?? node.props);
   const rejected = $derived(node.status === 'rejected');
@@ -75,7 +80,7 @@
     if (!propsDraft) return true;
     const props = propsDraft.filter((p) => p.key.trim() || p.value.trim()).map((p) => ({ key: p.key, value: p.value }));
     const body = JSON.stringify(props);
-    if (body === (lastSentProps ?? JSON.stringify(node.props))) return true;
+    if (body === (lastSentProps ?? JSON.stringify(current()?.props ?? []))) return true;
     lastSentProps = body;
     const saved = (await update({ props })) !== null;
     if (saved) live.markSaved(propsField);

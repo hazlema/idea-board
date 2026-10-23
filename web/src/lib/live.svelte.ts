@@ -102,6 +102,8 @@ class Live {
   /** A field has nothing unsaved any more. */
   markSaved(field: object): void {
     if (!this.#unsaved.delete(field) || this.#unsaved.size) return;
+    // The last unsaved field has settled (saved, or its item is gone): nothing is left unsaved.
+    this.saveFailed = false;
     this.#lastFailure = null;
     if (this.#retryTimer !== null) clearInterval(this.#retryTimer);
     this.#retryTimer = null;

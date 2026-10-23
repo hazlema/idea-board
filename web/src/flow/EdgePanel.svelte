@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Draft } from '$lib/draft.svelte';
   import { whoName } from '$lib/format';
   import { live } from '$lib/live.svelte';
@@ -13,10 +14,15 @@
 
   let { edge, onclose, ondelete, ongoto }: Props = $props();
 
+  // The panel belongs to one connection for its whole life: its saves, and any
+  // retries after it closes, go to that connection, never to the one selected now.
+  const edgeId = untrack(() => edge.id);
+  const current = (): FlowEdge | undefined => live.board?.flow.edges.find((e) => e.id === edgeId);
+
   // Saving a connection that is gone (deleted meanwhile) has nothing left to do.
   const label = new Draft({
-    server: () => edge.label,
-    save: (v) => (live.board?.flow.edges.some((e) => e.id === edge.id) ? live.send({ type: 'updateEdge', id: edge.id, label: v }) : Promise.resolve({})),
+    server: () => current()?.label ?? '',
+    save: (v) => (current() ? live.send({ type: 'updateEdge', id: edgeId, label: v }) : Promise.resolve({})),
     delay: 400,
   });
 

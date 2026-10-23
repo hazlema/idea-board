@@ -262,3 +262,85 @@ test('it tells the page when a card is selected', async () => {
   await select(container, 'n_1');
   await waitFor(() => expect(onselection).toHaveBeenLastCalledWith(true));
 });
+
+test('a failed card save still goes to that card after another card is selected', async () => {
+  vi.useFakeTimers();
+  try {
+    // The server stays down through the switch (the save and the save on leaving the card both fail).
+    vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server')).mockRejectedValueOnce(new Error('Could not reach the board server'));
+    const { container } = render(FlowchartView);
+    await select(container, 'n_1');
+    const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement;
+    notes.focus();
+    await fireEvent.input(notes, { target: { value: 'Breathe fire' } });
+    notes.blur();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(live.saveStatus).toBe('Not saved');
+
+    await select(container, 'n_2');
+    await vi.advanceTimersByTimeAsync(RETRY_MS);
+
+    const updates = vi.mocked(api.op).mock.calls.map(([op]) => op).filter((op) => op.type === 'updateNode');
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+    expect(updates.every((op) => op.id === 'n_1' && op.notes === 'Breathe fire')).toBe(true);
+    expect(live.saveStatus).toBe('All changes saved');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a failed save for a card that is deleted meanwhile stops retrying and the status recovers', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server'));
+    const { container } = render(FlowchartView);
+    await select(container, 'n_1');
+    const notes = screen.getByLabelText('Notes') as HTMLTextAreaElement;
+    notes.focus();
+    await fireEvent.input(notes, { target: { value: 'Breathe fire' } });
+    notes.blur();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(live.saveStatus).toBe('Not saved');
+
+    live.board = boardWith([node('n_2', 'Wizards', { x: 400 })]);
+    await vi.advanceTimersByTimeAsync(RETRY_MS * 2);
+
+    expect(api.op).toHaveBeenCalledTimes(1);
+    expect(live.saveStatus).toBe('All changes saved');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a failed connection-label save still goes to that connection after another is selected', async () => {
+  vi.useFakeTimers();
+  try {
+    live.board = boardWith(
+      [node('n_1', 'Dragons'), node('n_2', 'Wizards', { x: 400 }), node('n_3', 'Trolls', { x: 800 })],
+      [
+        { id: 'e_1', from: 'n_1', to: 'n_2', label: '', author: 'user' },
+        { id: 'e_2', from: 'n_2', to: 'n_3', label: 'old', author: 'user' },
+      ],
+    );
+    vi.mocked(api.op).mockRejectedValueOnce(new Error('Could not reach the board server')).mockRejectedValueOnce(new Error('Could not reach the board server'));
+    const { container } = render(FlowchartView);
+    const arrow = (n: number): Element => container.querySelectorAll('g[aria-label^="Connection"]')[n];
+    await fireEvent.pointerDown(arrow(0));
+    const label = screen.getByLabelText('Label') as HTMLInputElement;
+    label.focus();
+    await fireEvent.input(label, { target: { value: 'fears' } });
+    label.blur();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(live.saveStatus).toBe('Not saved');
+
+    await fireEvent.pointerDown(arrow(1));
+    await vi.advanceTimersByTimeAsync(RETRY_MS);
+
+    const updates = vi.mocked(api.op).mock.calls.map(([op]) => op).filter((op) => op.type === 'updateEdge');
+    expect(updates.length).toBeGreaterThanOrEqual(2);
+    expect(updates.every((op) => op.id === 'e_1' && op.label === 'fears')).toBe(true);
+    expect(live.saveStatus).toBe('All changes saved');
+  } finally {
+    vi.useRealTimers();
+  }
+});
