@@ -2,12 +2,41 @@
   "name": "idea-board",
   "version": "0.1.0",
   "private": true,
-  "description": "A shared whiteboard for brainstorming with Claude: nodes, connections, a detail panel, chat, and an MCP connector.",
+  "description": "A shared whiteboard for brainstorming with Claude: a brief, a brainstorm canvas, a flowchart, chat, and an MCP connector.",
   "type": "module",
-  "bin": { "idea-board": "./server.mjs" },
-  "engines": { "node": ">=18" },
+  "bin": {
+    "idea-board": "./server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/*.test.mjs"
+    "build": "vite build",
+    "dev": "vite",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint": "eslint .",
+    "test:server": "node --test test/*.test.mjs",
+    "test:web": "vitest run",
+    "test": "npm run test:server && npm run test:web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/svelte": "^5.4.2",
+    "@types/node": "^26.6.5",
+    "eslint": "^10.13.0",
+    "eslint-plugin-svelte": "^3.23.1",
+    "globals": "^17.13.0",
+    "jsdom": "^29.1.1",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.7",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

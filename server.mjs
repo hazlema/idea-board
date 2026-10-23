@@ -14,7 +14,8 @@ import { Agent } from './lib/agent.mjs';
 
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 1024 * 1024;
-const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+const DIST_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+const NOT_BUILT = 'Idea board is not built yet. Run: npm install && npm run build';
 const ASSET_TYPES = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
@@ -76,7 +77,7 @@ function sendJson(res, status, value) {
   res.end(JSON.stringify(value));
 }
 
-export function createServer({ store, agent, presence, port }) {
+export function createServer({ store, agent, presence, port, distDir = DIST_DIR }) {
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   const mcp = createMcpHandler(createToolRunner(store, presence));
@@ -203,8 +204,12 @@ export function createServer({ store, agent, presence, port }) {
 
       if (req.method === 'GET') {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-        const file = path.join(PUBLIC_DIR, name);
-        if (!file.startsWith(PUBLIC_DIR + path.sep) || !fs.existsSync(file)) return sendJson(res, 404, { error: 'not found' });
+        if (!fs.existsSync(path.join(distDir, 'index.html'))) {
+          res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' });
+          return res.end(NOT_BUILT);
+        }
+        const file = path.join(distDir, name);
+        if (!file.startsWith(distDir + path.sep) || !fs.statSync(file, { throwIfNoEntry: false })?.isFile()) return sendJson(res, 404, { error: 'not found' });
         res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
         return fs.createReadStream(file).pipe(res);
       }

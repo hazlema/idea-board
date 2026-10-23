@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
 
@@ -61,16 +62,30 @@ test('cross-site requests and foreign Host headers are refused', () => withServe
   assert.equal(store.board.chat.length, 0);
 }));
 
-test('static files are served and path traversal is blocked', () => withServer(async ({ base }) => {
+test('static files are served and path traversal is blocked', () => withServer(async ({ base, store }) => {
+  // Sits beside dist/, so only the traversal check keeps it private.
+  fs.writeFileSync(path.join(path.dirname(store.file), 'secret.txt'), 'private');
   const page = await fetch(`${base}/`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Idea board/);
-  const http = await import('node:http');
   const status = await new Promise((resolve) => {
-    http.get(`${base}/..%2fpackage.json`, (res) => { res.resume(); resolve(res.statusCode); });
+    http.get(`${base}/..%2fsecret.txt`, (res) => { res.resume(); resolve(res.statusCode); });
   });
   assert.equal(status, 404);
 }));
+
+test('the server explains how to build when dist is missing', async () => {
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-dist-'));
+  try {
+    await withServer(async ({ base }) => {
+      const page = await fetch(`${base}/`);
+      assert.equal(page.status, 503);
+      assert.match(await page.text(), /Idea board is not built yet\. Run: npm install && npm run build/);
+    }, { distDir: empty });
+  } finally {
+    fs.rmSync(empty, { recursive: true });
+  }
+});
 
 test('Claude sees the brief first and can add to it', () => withServer(async ({ call, userOp, store }) => {
   const [section] = store.board.brief.sections;

@@ -1,0 +1,128 @@
+<script lang="ts">
+  import * as api from '$lib/api';
+  import { live, type View } from '$lib/live.svelte';
+
+  const TABS: { view: View; label: string }[] = [
+    { view: 'brief', label: 'Brief' },
+    { view: 'brainstorm', label: 'Brainstorm' },
+    { view: 'flowchart', label: 'Flowchart' },
+  ];
+
+  let menuOpen = $state(false);
+  let saveOpen = $state(false);
+  let versionName = $state('');
+
+  const saveStatus = $derived(live.saveFailed ? 'Not saved' : live.saving > 0 ? 'Saving…' : 'All changes saved');
+
+  function messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : 'Something went wrong';
+  }
+
+  async function changeTitle(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const title = input.value.trim();
+    if (!title) {
+      input.value = live.board?.title ?? '';
+      return;
+    }
+    if (title !== live.board?.title) await live.send({ type: 'setTitle', title });
+  }
+
+  async function step(action: 'undo' | 'redo'): Promise<void> {
+    try {
+      const { undone, skipped } = await api[action]();
+      if (!undone) live.toast(action === 'undo' ? 'Nothing to undo' : 'Nothing to redo');
+      else if (skipped.length) live.toast(`${skipped.length} part${skipped.length === 1 ? '' : 's'} could not be ${action === 'undo' ? 'undone' : 'redone'} because they changed since`);
+    } catch (error) {
+      live.toast(messageOf(error));
+    }
+  }
+
+  async function saveVersion(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    const name = versionName.trim();
+    if (!name) return;
+    try {
+      const meta = await api.saveVersion(name);
+      live.toast(`Saved version “${meta.name}”`);
+      versionName = '';
+      saveOpen = false;
+    } catch (error) {
+      live.toast(messageOf(error));
+    }
+  }
+
+  async function exportDoc(): Promise<void> {
+    menuOpen = false;
+    try {
+      live.toast(`Design doc written to ${await api.exportDoc()}`);
+    } catch (error) {
+      live.toast(messageOf(error));
+    }
+  }
+
+  function closePopovers(event: MouseEvent): void {
+    if (!(event.target as Element).closest('[data-popover]')) {
+      menuOpen = false;
+      saveOpen = false;
+    }
+  }
+
+  function onkeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      menuOpen = false;
+      saveOpen = false;
+    }
+  }
+
+  const button = 'rounded-md border border-line bg-raised px-2.5 py-1 hover:border-muted';
+</script>
+
+<svelte:window onclick={closePopovers} {onkeydown} />
+
+<header class="flex items-center gap-4 border-b border-line bg-panel px-4 py-2">
+  <input
+    class="w-56 rounded-md border border-transparent bg-transparent px-2 py-1 text-base font-semibold hover:border-line"
+    aria-label="Board title"
+    value={live.board?.title ?? ''}
+    onchange={changeTitle}
+    disabled={!live.board}
+  />
+
+  <div class="flex gap-1" role="tablist" aria-label="Views">
+    {#each TABS as tab (tab.view)}
+      <button
+        role="tab"
+        aria-selected={live.view === tab.view}
+        class="rounded-md px-3 py-1 {live.view === tab.view ? 'bg-accent/25 text-text' : 'text-muted hover:text-text'}"
+        onclick={() => (live.view = tab.view)}>{tab.label}</button>
+    {/each}
+  </div>
+
+  <div class="ml-auto flex items-center gap-2">
+    <span class="mr-2 text-xs {live.saveFailed ? 'text-rose-400' : 'text-muted'}" aria-live="polite">{saveStatus}</span>
+    <button class={button} onclick={() => step('undo')}>↶ Undo</button>
+    <button class={button} aria-label="Redo" title="Redo" onclick={() => step('redo')}>↷</button>
+
+    <div class="relative" data-popover>
+      <button class={button} aria-expanded={saveOpen} onclick={() => { saveOpen = !saveOpen; menuOpen = false; }}>★ Save version</button>
+      {#if saveOpen}
+        <form class="absolute right-0 z-40 mt-1 flex w-64 flex-col gap-2 rounded-md border border-line bg-raised p-3 shadow-lg" onsubmit={saveVersion}>
+          <label class="text-xs text-muted" for="version-name">Name this version</label>
+          <!-- svelte-ignore a11y_autofocus -->
+          <input id="version-name" class="rounded-md border border-line bg-ink px-2 py-1" bind:value={versionName} placeholder="e.g. Before the rewrite" autofocus />
+          <button class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink" disabled={!versionName.trim()}>Save</button>
+        </form>
+      {/if}
+    </div>
+
+    <div class="relative" data-popover>
+      <button class={button} aria-label="More" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => { menuOpen = !menuOpen; saveOpen = false; }}>⋯</button>
+      {#if menuOpen}
+        <div class="absolute right-0 z-40 mt-1 w-48 rounded-md border border-line bg-raised py-1 shadow-lg" role="menu">
+          <button class="block w-full px-3 py-1.5 text-left hover:bg-line" role="menuitem" onclick={exportDoc}>Export design doc</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+</header>
