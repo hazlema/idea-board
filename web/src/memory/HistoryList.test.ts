@@ -136,3 +136,20 @@ test('the list reloads when the server records history', async () => {
   live.historyTick += 1;
   expect(await screen.findByText('second')).toBeInTheDocument();
 });
+
+test('an edit reloads the history but not the saved versions; a new version reloads them', async () => {
+  vi.mocked(api.history).mockResolvedValue([row(1, 'user', 'first')]);
+  render(HistoryList);
+  await screen.findByText('first');
+  await waitFor(() => expect(api.versions).toHaveBeenCalledTimes(1));
+
+  vi.mocked(api.history).mockResolvedValue([row(2, 'user', 'second'), row(1, 'user', 'first')]);
+  live.historyTick += 1;
+  expect(await screen.findByText('second')).toBeInTheDocument();
+  expect(api.versions).toHaveBeenCalledTimes(1);
+  const historyCalls = vi.mocked(api.history).mock.calls.length;
+
+  live.versionsTick += 1;
+  await waitFor(() => expect(api.versions).toHaveBeenCalledTimes(2));
+  expect(api.history).toHaveBeenCalledTimes(historyCalls);
+});

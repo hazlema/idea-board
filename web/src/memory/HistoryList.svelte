@@ -39,11 +39,10 @@
     return [...changes, ...marks].sort((a, b) => time(b.at) - time(a.at));
   });
 
-  async function load(limit: number): Promise<void> {
+  async function loadHistory(limit: number): Promise<void> {
     try {
-      const [history, saved] = await Promise.all([api.history(limit), api.versions()]);
+      const history = await api.history(limit);
       rows = history;
-      versions = saved;
       more = history.length >= limit;
     } catch (error) {
       live.toast(error instanceof Error ? error.message : 'Could not load the history');
@@ -52,13 +51,26 @@
     }
   }
 
-  // Loads first, and again whenever the server records a change or a version.
+  async function loadVersions(): Promise<void> {
+    try {
+      versions = await api.versions();
+    } catch (error) {
+      live.toast(error instanceof Error ? error.message : 'Could not load the saved versions');
+    }
+  }
+
+  // Loads first, and again whenever the server records a change.
   $effect(() => {
     void live.historyTick;
-    void live.versionsTick;
     // Reloads as many rows as are showing, without depending on them.
     const limit = untrack(() => Math.min(500, Math.max(PAGE, rows.length)));
-    void load(limit);
+    void loadHistory(limit);
+  });
+
+  // Every saved version is a file on the server: read the list only when it changes.
+  $effect(() => {
+    void live.versionsTick;
+    void loadVersions();
   });
 
   async function loadMore(): Promise<void> {
