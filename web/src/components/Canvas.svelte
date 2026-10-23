@@ -100,6 +100,12 @@
     el.addEventListener('pointercancel', end);
   }
 
+  // A press on the background pans; it must not also start selecting text in the boxes it
+  // drags across. (Cancelling the press itself would keep focus in the field being edited.)
+  function onselectstart(event: Event): void {
+    if (panning) event.preventDefault();
+  }
+
   function ondblclick(event: MouseEvent): void {
     if (isItem(event)) return;
     onBackgroundDblClick?.(worldAt(event.clientX, event.clientY));
@@ -115,6 +121,7 @@
   style:background-size="{GRID * view.k}px {GRID * view.k}px"
   style:background-position="{view.x}px {view.y}px"
   {onpointerdown}
+  {onselectstart}
   {ondblclick}
 >
   <div class="absolute top-0 left-0 origin-top-left" style:transform="translate({view.x}px, {view.y}px) scale({view.k})">
