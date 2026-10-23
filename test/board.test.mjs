@@ -59,6 +59,18 @@ test('a Claude reply marks earlier user messages as answered', () => {
   assert.equal(board.chat.filter((m) => !m.handled).length, 0);
 });
 
+test('a Claude reply with answers marks only those messages answered', () => {
+  const board = emptyBoard();
+  const { message: one } = applyOp(board, { type: 'chat', text: 'one' }, 'user');
+  const { message: two } = applyOp(board, { type: 'chat', text: 'two' }, 'user');
+  applyOp(board, { type: 'chat', text: 'done', answers: [one.id] }, 'claude');
+  assert.deepEqual(board.chat.filter((m) => !m.handled).map((m) => m.id), [two.id]);
+  // The user cannot mark messages answered this way.
+  applyOp(board, { type: 'chat', text: 'three', answers: [two.id] }, 'user');
+  assert.equal(board.chat.find((m) => m.id === two.id).handled, false);
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'x', answers: 'all' }, 'claude'), /answers/);
+});
+
 test('tidy lays nodes out left to right by connection depth, even with a cycle', () => {
   const board = emptyBoard();
   const add = (title) => applyOp(board, { type: 'addNode', title, x: Math.round(Math.random() * 500), y: Math.round(Math.random() * 500) }, 'user').node;
