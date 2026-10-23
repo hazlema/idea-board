@@ -45,9 +45,11 @@
     picture: Picture;
     drag?: DragOptions;
     resize?: ResizeOptions;
+    /** Shown from a saved version: nothing is sent to the board. */
+    readonly?: boolean;
   }
 
-  let { picture, drag, resize }: Props = $props();
+  let { picture, drag, resize, readonly = false }: Props = $props();
 
   const caption = new Draft({
     server: () => picture.caption,
@@ -57,7 +59,7 @@
 
   // A picture that arrived without a preview (from a URL, or from Claude) gets one the first time it is shown.
   $effect(() => {
-    if (!picture.preview) void previewFromAsset(picture.id, picture.asset);
+    if (!readonly && !picture.preview) void previewFromAsset(picture.id, picture.asset);
   });
 </script>
 

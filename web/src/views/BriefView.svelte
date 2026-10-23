@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { ago } from '$lib/format';
   import { live } from '$lib/live.svelte';
-  import type { Section } from '$lib/types';
+  import type { Board, Section } from '$lib/types';
 
   type Field = 'title' | 'text';
 
@@ -10,7 +10,15 @@
   const MAX_LABEL = 60;
   const keyOf = (id: string, field: Field) => `${id}:${field}`;
 
-  const sections = $derived(live.board?.brief.sections ?? []);
+  interface Props {
+    /** A board to show instead of the live one: the view is then read-only (a saved version's preview). */
+    board?: Board;
+  }
+
+  let { board }: Props = $props();
+
+  const readonly = $derived(board !== undefined);
+  const sections = $derived((board ?? live.board)?.brief.sections ?? []);
 
   // What the user has typed and the server has not confirmed yet. A field with a
   // draft shows the draft, so an incoming board update never overwrites typing.
@@ -129,7 +137,7 @@
 </script>
 
 <section class="min-h-0 flex-1 overflow-y-auto" aria-label="Brief">
-  <div bind:this={column} class="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-4 py-6">
+  <div bind:this={column} inert={readonly} class="mx-auto flex w-full max-w-[760px] flex-col gap-3 px-4 py-6">
     <p class="text-muted">Free-form notes about the project. Claude reads this before every change and adds to it when you settle something.</p>
 
     {#each sections as section, i (section.id)}
@@ -174,6 +182,8 @@
       </div>
     {/each}
 
-    <button type="button" class="self-start rounded-md border border-dashed border-line px-3 py-1.5 text-muted hover:border-accent hover:text-text" onclick={add}>+ Add text box</button>
+    {#if !readonly}
+      <button type="button" class="self-start rounded-md border border-dashed border-line px-3 py-1.5 text-muted hover:border-accent hover:text-text" onclick={add}>+ Add text box</button>
+    {/if}
   </div>
 </section>

@@ -15,7 +15,7 @@
   import { linkPath, toWorld, type Point, type Rect, type View } from '$lib/geometry';
   import { live } from '$lib/live.svelte';
   import { pastedImage, pastedUrl } from '$lib/pictures';
-  import { objectLabel, type BObject, type Group } from '$lib/types';
+  import { objectLabel, type Board, type BObject, type Group } from '$lib/types';
 
   type Size = { w: number; h: number };
   type Selection = { kind: 'object' | 'link'; id: string };
@@ -32,6 +32,17 @@
   const UNTITLED: Record<BObject['kind'], string> = { group: 'Untitled group', note: 'Note', picture: 'picture', topic: 'Topic' };
   const PICTURE_TYPES = 'image/png,image/jpeg,image/gif,image/webp';
 
+  interface Props {
+    /** A board to show instead of the live one: the view is then read-only (a saved version's preview). */
+    board?: Board;
+  }
+
+  let { board }: Props = $props();
+
+  // A preview keeps its own remembered view, but starts where the live tab is.
+  const readonly = $derived(board !== undefined);
+  const tab = $derived(readonly ? `${TAB}-preview` : TAB);
+
   let view = $state<View>(loadView(TAB) ?? DEFAULT_VIEW);
   let canvas: Canvas | undefined = $state();
   let filePicker: HTMLInputElement | undefined = $state();
@@ -47,7 +58,8 @@
   // Something just created: it is selected once the board update that holds it arrives.
   let arriving: string | null = null;
 
-  const page = $derived(live.board?.brainstorm.pages.find((p) => p.id === MAIN_PAGE) ?? live.board?.brainstorm.pages[0]);
+  const shownBoard = $derived(board ?? live.board);
+  const page = $derived(shownBoard?.brainstorm.pages.find((p) => p.id === MAIN_PAGE) ?? shownBoard?.brainstorm.pages[0]);
   const objects = $derived(page?.objects ?? []);
   const links = $derived(page?.links ?? []);
   const selectedObject = $derived(selected?.kind === 'object' ? objects.find((o) => o.id === selected?.id) : undefined);
@@ -106,6 +118,7 @@
   const isBrainstormPointer = () => live.pointing?.kind === 'object' || live.pointing?.kind === 'entry';
 
   function select(next: Selection | null): void {
+    if (readonly) return;
     arriving = null;
     selected = next;
   }
@@ -133,7 +146,7 @@
   // Keep the "Talking about" chip in step with the board: renamed, moved to another group, or gone.
   $effect(() => {
     const p = live.pointing;
-    if (!p || !live.board) return;
+    if (readonly || !p || !live.board) return;
     if (p.kind === 'object') {
       const o = objects.find((x) => x.id === p.id);
       if (!o) live.pointing = null;
@@ -147,7 +160,7 @@
   });
 
   function pick(event: PointerEvent, o: BObject): void {
-    if (event.button !== 0) return;
+    if (readonly || event.button !== 0) return;
     if (linking) {
       event.preventDefault();
       linkWith(o);
@@ -204,7 +217,7 @@
     target instanceof Element && target.closest('input, textarea, select, [contenteditable]') !== null;
 
   function onpaste(event: ClipboardEvent): void {
-    if (typingIn(event.target)) return;
+    if (readonly || typingIn(event.target)) return;
     const file = pastedImage(event);
     const url = file ? null : pastedUrl(event);
     if (!file && !url) return;
@@ -213,13 +226,13 @@
   }
 
   function ondragover(event: DragEvent): void {
-    if (!event.dataTransfer?.types.includes('Files')) return;
+    if (readonly || !event.dataTransfer?.types.includes('Files')) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
   }
 
   function ondrop(event: DragEvent): void {
-    if (!event.dataTransfer?.types.includes('Files') || !canvas) return;
+    if (readonly || !event.dataTransfer?.types.includes('Files') || !canvas) return;
     event.preventDefault();
     const files = Array.from(event.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
     if (!files.length) {
@@ -349,11 +362,11 @@
 
   onMount(() => () => {
     // Leaving the tab drops the chip for something that is no longer on screen.
-    if (isBrainstormPointer()) live.pointing = null;
+    if (!readonly && isBrainstormPointer()) live.pointing = null;
   });
 
   function onkeydown(event: KeyboardEvent): void {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (readonly || event.ctrlKey || event.metaKey || event.altKey) return;
     const typing = typingIn(event.target);
     if (event.key === 'Escape') {
       if (typing) (event.target as HTMLElement).blur();
@@ -376,7 +389,7 @@
 <svelte:window {onkeydown} {onpaste} />
 
 <div class="relative flex min-w-0 flex-1" role="region" aria-label="Brainstorm" {ondragover} {ondrop}>
-  <Canvas bind:this={canvas} tab={TAB} label="Brainstorm canvas" bind:view onBackgroundClick={clearSelection}>
+  <Canvas bind:this={canvas} {tab} label="Brainstorm canvas" bind:view onBackgroundClick={clearSelection}>
     <Links {lines} selected={selectedLink} onselect={(id) => select({ kind: 'link', id })} ondelete={removeLink} />
     {#each objects as o (o.id)}
       {@const pos = positionOf(o)}
@@ -386,6 +399,7 @@
       <div
         data-nopan
         data-object-id={o.id}
+        inert={readonly}
         class="absolute isolate flex flex-col {outline(o)} {isSelected ? 'outline-2 outline-offset-2 outline-accent' : ''} {linking?.from === o.id ? 'outline-2 outline-offset-2 outline-dashed outline-accent' : ''} {active === o.id ? 'z-20' : isSelected ? 'z-10' : ''} {live.flash.has(o.id) ? 'flash-claude' : ''} {linking ? 'cursor-crosshair' : ''}"
         style:left="{pos.x}px"
         style:top="{pos.y}px"
@@ -406,7 +420,7 @@
         {:else if o.kind === 'note'}
           <NoteBox note={o} drag={dragFor(o)} resize={resizeFor(o, MIN.note)} autofocus={focusNew === o.id} onfocused={() => (focusNew = null)} />
         {:else if o.kind === 'picture'}
-          <PictureBox picture={o} drag={dragFor(o)} resize={resizeFor(o, MIN.picture)} />
+          <PictureBox picture={o} drag={dragFor(o)} resize={resizeFor(o, MIN.picture)} {readonly} />
         {:else}
           <TopicBubble topic={o} drag={dragFor(o)} autofocus={focusNew === o.id} onfocused={() => (focusNew = null)} />
         {/if}
@@ -417,13 +431,15 @@
     {/each}
   </Canvas>
 
-  <Palette linking={linking ? (linking.from ? 'to' : 'from') : null} onadd={(kind) => void addObject(kind)} onpicture={() => filePicker?.click()} onlink={startLinking} />
-  <input bind:this={filePicker} type="file" accept={PICTURE_TYPES} multiple class="hidden" aria-label="Choose pictures" onchange={pickedFiles} />
+  {#if !readonly}
+    <Palette linking={linking ? (linking.from ? 'to' : 'from') : null} onadd={(kind) => void addObject(kind)} onpicture={() => filePicker?.click()} onlink={startLinking} />
+    <input bind:this={filePicker} type="file" accept={PICTURE_TYPES} multiple class="hidden" aria-label="Choose pictures" onchange={pickedFiles} />
+  {/if}
 
   {#if objects.length === 0}
     <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center text-muted">
       <strong class="text-base text-text">Empty canvas</strong>
-      <span>Add a group, note or topic from the palette, paste or drop a picture, or ask Claude in the chat below.</span>
+      <span>{readonly ? 'Nothing on the canvas in this version.' : 'Add a group, note or topic from the palette, paste or drop a picture, or ask Claude in the chat below.'}</span>
     </div>
   {/if}
 </div>

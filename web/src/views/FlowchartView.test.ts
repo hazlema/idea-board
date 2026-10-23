@@ -192,3 +192,29 @@ test('connections in the panel select the other card', async () => {
   expect(live.pointing?.id).toBe('n_2');
   expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Wizards');
 });
+
+test('a board passed in is shown read-only: its cards, no add or tidy, no selecting, no ops', async () => {
+  live.board = boardWith([node('n_live', 'Live card')]);
+  const { container } = render(FlowchartView, { board: boardWith([node('n_old', 'Old card')]) });
+
+  expect(screen.getByText('Old card')).toBeInTheDocument();
+  expect(screen.queryByText('Live card')).toBeNull();
+  expect(screen.queryByRole('button', { name: '+ Idea' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Tidy' })).toBeNull();
+
+  await select(container, 'n_old');
+  await fireEvent.keyDown(window, { key: 'Delete' });
+  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(live.pointing).toBeNull();
+  expect(api.op).not.toHaveBeenCalled();
+});
+
+test('it tells the page when a card is selected', async () => {
+  live.board = boardWith([node('n_1', 'Card')]);
+  const onselection = vi.fn();
+  const { container } = render(FlowchartView, { onselection });
+  expect(onselection).toHaveBeenLastCalledWith(false);
+
+  await select(container, 'n_1');
+  await waitFor(() => expect(onselection).toHaveBeenLastCalledWith(true));
+});

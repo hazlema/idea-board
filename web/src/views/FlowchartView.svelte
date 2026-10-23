@@ -7,7 +7,7 @@
   import NodePanel from '../flow/NodePanel.svelte';
   import { centerView, curve, fitView, flowAnchors, toWorld, type Point, type Rect, type View } from '$lib/geometry';
   import { live } from '$lib/live.svelte';
-  import type { FlowNode } from '$lib/types';
+  import type { Board, FlowNode } from '$lib/types';
 
   type Selection = { kind: 'node' | 'edge'; id: string };
 
@@ -18,6 +18,19 @@
   const CARD_HALF = { x: 110, y: 28 };
   const DRAG_THRESHOLD = 3;
   const MAX_LABEL = 60;
+
+  interface Props {
+    /** A board to show instead of the live one: the view is then read-only (a saved version's preview). */
+    board?: Board;
+    /** Told whether a card or arrow is selected, so the page can leave the right side to its details. */
+    onselection?: (has: boolean) => void;
+  }
+
+  let { board, onselection }: Props = $props();
+
+  const readonly = $derived(board !== undefined);
+  const tab = $derived(readonly ? `${TAB}-preview` : TAB);
+  const shownBoard = $derived(board ?? live.board);
 
   const restored = loadView(TAB);
   let view = $state<View>(restored ?? DEFAULT_VIEW);
@@ -36,8 +49,8 @@
   // A card or arrow just created: it is selected once the board update that holds it arrives.
   let arriving: string | null = null;
 
-  const nodes = $derived(live.board?.flow.nodes ?? []);
-  const edges = $derived(live.board?.flow.edges ?? []);
+  const nodes = $derived(shownBoard?.flow.nodes ?? []);
+  const edges = $derived(shownBoard?.flow.edges ?? []);
   const shownNodes = $derived(nodes.filter((n) => !(hideRejected && n.status === 'rejected')));
   const shownIds = $derived(new Set(shownNodes.map((n) => n.id)));
   const count = (status: FlowNode['status']): number => nodes.filter((n) => n.status === status).length;
@@ -108,7 +121,7 @@
 
   // Waits for the board update (and card sizes) that a Tidy or a first visit needs.
   $effect(() => {
-    if (fitAfter === null || !live.board || live.board.version <= fitAfter) return;
+    if (fitAfter === null || !shownBoard || shownBoard.version <= fitAfter) return;
     if (!shownNodes.every((n) => sizes[n.id])) return;
     fitAfter = null;
     fit();
@@ -123,6 +136,7 @@
   // ---- selection ----
 
   function select(next: Selection | null): void {
+    if (readonly) return;
     arriving = null;
     selected = next;
     focusTitle = false;
@@ -157,6 +171,12 @@
     if (live.pointing.label !== label) live.pointing = { kind: 'node', id: node.id, label };
   });
 
+  // Tells the page whether the details panel is open, which takes the place of the Memory panel.
+  $effect(() => {
+    onselection?.(selectedNode !== undefined || selectedEdge !== undefined);
+    return () => onselection?.(false);
+  });
+
   // A hidden card cannot stay selected.
   $effect(() => {
     if (selectedNode && !shownIds.has(selectedNode.id)) select(null);
@@ -171,7 +191,7 @@
   }
 
   async function deleteSelected(): Promise<void> {
-    if (!selected) return;
+    if (readonly || !selected) return;
     if (selected.kind === 'node') {
       if (!selectedNode || !confirm(`Delete "${selectedNode.title}" and its connections?`)) return;
       if ((await live.send({ type: 'deleteNode', id: selected.id })) === null) return;
@@ -184,6 +204,7 @@
   // ---- adding ----
 
   async function addNodeAt(x: number, y: number): Promise<void> {
+    if (readonly) return;
     const result = (await live.send({ type: 'addNode', title: 'New idea', x, y })) as { node?: FlowNode } | null;
     if (!result?.node) return;
     selectNew({ kind: 'node', id: result.node.id });
@@ -200,7 +221,7 @@
   // ---- cards ----
 
   function startMove(event: PointerEvent, node: FlowNode): void {
-    if (event.button !== 0 || !canvas) return;
+    if (readonly || event.button !== 0 || !canvas) return;
     const surface = canvas;
     select({ kind: 'node', id: node.id });
     const el = event.currentTarget as HTMLElement;
@@ -244,7 +265,7 @@
   });
 
   function startConnect(event: PointerEvent, from: FlowNode): void {
-    if (event.button !== 0 || !canvas) return;
+    if (readonly || event.button !== 0 || !canvas) return;
     event.preventDefault();
     const surface = canvas;
     const el = (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-node-id]');
@@ -281,12 +302,12 @@
   onMount(() => {
     // Leaving the tab drops the chip for a card that is no longer on screen.
     return () => {
-      if (live.pointing?.kind === 'node') live.pointing = null;
+      if (!readonly && live.pointing?.kind === 'node') live.pointing = null;
     };
   });
 
   function onkeydown(event: KeyboardEvent): void {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (readonly || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target instanceof HTMLElement ? event.target : null;
     const typing = target?.closest('input, textarea, select, [contenteditable]');
     if (event.key === 'Escape') {
@@ -312,40 +333,45 @@
   <div class="relative flex min-w-0 flex-1">
     <Canvas
       bind:this={canvas}
-      tab={TAB}
+      {tab}
       label="Flowchart"
       bind:view
       onBackgroundClick={() => select(null)}
       onBackgroundDblClick={(p) => void addNodeAt(p.x - CARD_HALF.x, p.y - CARD_HALF.y)}
     >
-      <Edges edges={edgeLines} draft={draftPath} onselect={(id) => select({ kind: 'edge', id })} />
-      {#each shownNodes as node (node.id)}
-        <NodeCard
-          {node}
-          x={positionOf(node).x}
-          y={positionOf(node).y}
-          selected={selected?.kind === 'node' && selected.id === node.id}
-          flashing={live.flash.has(node.id)}
-          connectTarget={connecting?.targetId === node.id}
-          dragging={draggingId === node.id}
-          onmovestart={(e) => startMove(e, node)}
-          onconnectstart={(e) => startConnect(e, node)}
-          ontoggle={(accepted) => toggleAccepted(node, accepted)}
-          onopen={() => {
-            select({ kind: 'node', id: node.id });
-            focusTitle = true;
-          }}
-          onsize={(w, h) => {
-            const known = sizes[node.id];
-            if (!known || known.w !== w || known.h !== h) sizes[node.id] = { w, h };
-          }}
-        />
-      {/each}
+      <!-- A preview is for looking: nothing in it takes a click. -->
+      <div inert={readonly}>
+        <Edges edges={edgeLines} draft={draftPath} onselect={(id) => select({ kind: 'edge', id })} />
+        {#each shownNodes as node (node.id)}
+          <NodeCard
+            {node}
+            x={positionOf(node).x}
+            y={positionOf(node).y}
+            selected={selected?.kind === 'node' && selected.id === node.id}
+            flashing={live.flash.has(node.id)}
+            connectTarget={connecting?.targetId === node.id}
+            dragging={draggingId === node.id}
+            onmovestart={(e) => startMove(e, node)}
+            onconnectstart={(e) => startConnect(e, node)}
+            ontoggle={(accepted) => toggleAccepted(node, accepted)}
+            onopen={() => {
+              select({ kind: 'node', id: node.id });
+              focusTitle = true;
+            }}
+            onsize={(w, h) => {
+              const known = sizes[node.id];
+              if (!known || known.w !== w || known.h !== h) sizes[node.id] = { w, h };
+            }}
+          />
+        {/each}
+      </div>
     </Canvas>
 
     <div class="absolute top-3 left-3 z-10 flex items-center gap-2.5 rounded-lg border border-line bg-panel/90 px-2.5 py-1.5 backdrop-blur">
-      <button type="button" class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink hover:brightness-110" title="Add an idea (or double-click the board)" onclick={addInMiddle}>+ Idea</button>
-      <button type="button" class={button} title="Arrange cards left to right by how they connect" onclick={tidy}>Tidy</button>
+      {#if !readonly}
+        <button type="button" class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink hover:brightness-110" title="Add an idea (or double-click the board)" onclick={addInMiddle}>+ Idea</button>
+        <button type="button" class={button} title="Arrange cards left to right by how they connect" onclick={tidy}>Tidy</button>
+      {/if}
       <button type="button" class={button} title="Fit everything on screen (F)" onclick={fit}>Fit</button>
       <label class="flex items-center gap-1.5 text-muted select-none">
         <input type="checkbox" checked={hideRejected} onchange={(e) => setHideRejected(e.currentTarget.checked)} /> Hide rejected
@@ -356,12 +382,12 @@
     {#if nodes.length === 0}
       <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-center text-muted">
         <strong class="text-base text-text">Empty board</strong>
-        <span>Double-click anywhere to add an idea, or ask Claude in the chat below.</span>
+        <span>{readonly ? 'No cards in this version.' : 'Double-click anywhere to add an idea, or ask Claude in the chat below.'}</span>
       </div>
     {/if}
   </div>
 
-  {#if selectedNode || selectedEdge}
+  {#if !readonly && (selectedNode || selectedEdge)}
     <aside class="w-[360px] shrink-0 overflow-y-auto border-l border-line bg-panel px-4 py-4" aria-label={selectedNode ? 'Card details' : 'Connection details'}>
       {#if selectedNode}
         {#key selectedNode.id}

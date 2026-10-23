@@ -285,3 +285,16 @@ test('an empty board says how to start', () => {
   render(BrainstormView);
   expect(screen.getByText('Empty canvas')).toBeInTheDocument();
 });
+
+test('a board passed in is shown read-only: no palette, no pointing, no ops', async () => {
+  const { container } = render(BrainstormView, { board: boardWith([group('o_old', 'Old group')]) });
+
+  expect(screen.getByDisplayValue('Old group')).toBeInTheDocument();
+  expect(screen.queryByDisplayValue('Wizards\nand more')).toBeNull();
+  expect(screen.queryByRole('button', { name: '▤ Group' })).toBeNull();
+
+  await fireEvent.pointerDown(box(container, 'o_old'), { button: 0 });
+  await fireEvent.keyDown(window, { key: 'Delete' });
+  expect(live.pointing).toBeNull();
+  expect(api.op).not.toHaveBeenCalled();
+});

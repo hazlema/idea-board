@@ -34,7 +34,7 @@ test('board events carry changed as an array of ids', () => {
   const dir = tmpDir();
   const store = new BoardStore(path.join(dir, 'board.json'));
   const events = [];
-  const off = store.subscribe((e) => events.push(e));
+  const off = store.subscribe((e) => e.type === 'board' && events.push(e));
   const { node } = store.apply({ type: 'addNode', title: 'A', x: 0, y: 0 }, 'claude');
   store.apply({ type: 'setTitle', title: 'T' }, 'user');
   off();
@@ -43,6 +43,16 @@ test('board events carry changed as an array of ids', () => {
   assert.deepEqual(events[0].changed, [node.id]);
   assert.deepEqual(events[1].changed, []);
   assert.equal(events[0].type, 'board');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('a recorded change announces history, so the History list reloads', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const types = [];
+  store.subscribe((e) => types.push(e.type));
+  store.apply({ type: 'addNode', title: 'A', x: 0, y: 0 }, 'user');
+  assert.deepEqual(types, ['board', 'history']);
   fs.rmSync(dir, { recursive: true });
 });
 

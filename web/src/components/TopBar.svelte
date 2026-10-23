@@ -32,7 +32,7 @@
     try {
       const { undone, skipped } = await api[action]();
       if (!undone) live.toast(action === 'undo' ? 'Nothing to undo' : 'Nothing to redo');
-      else if (skipped.length) live.toast(`${skipped.length} part${skipped.length === 1 ? '' : 's'} could not be ${action === 'undo' ? 'undone' : 'redone'} because they changed since`);
+      else if (skipped.length) live.toast(`Kept ${skipped.length} item${skipped.length === 1 ? '' : 's'} you changed since.`);
     } catch (error) {
       live.toast(messageOf(error));
     }
@@ -55,10 +55,29 @@
   async function exportDoc(): Promise<void> {
     menuOpen = false;
     try {
-      live.toast(`Design doc written to ${await api.exportDoc()}`);
+      live.toast(`Saved ${await api.exportDoc()}`);
     } catch (error) {
       live.toast(messageOf(error));
     }
+  }
+
+  /** "Version 2026-10-22 21:58", in local time. */
+  function defaultVersionName(): string {
+    const now = new Date();
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    return `Version ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+
+  function toggleSave(): void {
+    saveOpen = !saveOpen;
+    menuOpen = false;
+    if (saveOpen) versionName = defaultVersionName();
+  }
+
+  /** Focuses the field and selects its text (the browser's autofocus is skipped when a button has focus). */
+  function focusAll(node: HTMLInputElement): void {
+    node.focus();
+    node.select();
   }
 
   function closePopovers(event: MouseEvent): void {
@@ -72,7 +91,16 @@
     if (event.key === 'Escape') {
       menuOpen = false;
       saveOpen = false;
+      return;
     }
+    // Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y redo, except where the field's own undo should win.
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const action = key === 'z' ? (event.shiftKey ? 'redo' : 'undo') : key === 'y' && !event.shiftKey ? 'redo' : null;
+    if (!action) return;
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    event.preventDefault();
+    void step(action);
   }
 
   const button = 'rounded-md border border-line bg-raised px-2.5 py-1 hover:border-muted';
@@ -105,12 +133,11 @@
     <button class={button} aria-label="Redo" title="Redo" onclick={() => step('redo')}>↷</button>
 
     <div class="relative" data-popover>
-      <button class={button} aria-expanded={saveOpen} onclick={() => { saveOpen = !saveOpen; menuOpen = false; }}>★ Save version</button>
+      <button class={button} aria-expanded={saveOpen} onclick={toggleSave}>★ Save version</button>
       {#if saveOpen}
         <form class="absolute right-0 z-40 mt-1 flex w-64 flex-col gap-2 rounded-md border border-line bg-raised p-3 shadow-lg" onsubmit={saveVersion}>
           <label class="text-xs text-muted" for="version-name">Name this version</label>
-          <!-- svelte-ignore a11y_autofocus -->
-          <input id="version-name" class="rounded-md border border-line bg-ink px-2 py-1" bind:value={versionName} placeholder="e.g. Before the rewrite" autofocus />
+          <input id="version-name" class="rounded-md border border-line bg-ink px-2 py-1" bind:value={versionName} placeholder="e.g. Before the rewrite" use:focusAll />
           <button class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink" disabled={!versionName.trim()}>Save</button>
         </form>
       {/if}
