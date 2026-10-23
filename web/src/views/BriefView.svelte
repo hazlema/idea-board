@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { ago } from '$lib/format';
   import { live } from '$lib/live.svelte';
   import type { Section } from '$lib/types';
 
@@ -116,14 +117,6 @@
     void live.send({ type: 'moveSection', id: section.id, by });
   }
 
-  function ago(iso: string): string {
-    const seconds = Math.max(0, (now - new Date(iso).getTime()) / 1000);
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return new Date(iso).toLocaleDateString();
-  }
-
   /** Grows the textarea to fit its text. */
   function grow(node: HTMLTextAreaElement, _value: string) {
     const fit = () => {
@@ -177,7 +170,7 @@
           onfocus={() => onFocus(section, 'text')}
           onblur={() => onBlur(section, 'text')}
         ></textarea>
-        <div class="px-1.5 text-xs text-muted">Last edit: {section.updatedBy === 'claude' ? 'Claude' : 'You'} · {ago(section.updatedAt)}</div>
+        <div class="px-1.5 text-xs text-muted">Last edit: {section.updatedBy === 'claude' ? 'Claude' : 'You'} · {ago(section.updatedAt, now)}</div>
       </div>
     {/each}
 

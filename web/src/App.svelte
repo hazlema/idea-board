@@ -5,15 +5,15 @@
   import ChatDock from './components/ChatDock.svelte';
   import Toast from './components/Toast.svelte';
   import BriefView from './views/BriefView.svelte';
+  import FlowchartView from './views/FlowchartView.svelte';
 
   onMount(() => live.connect());
 
   const PLACEHOLDERS = {
     brainstorm: { name: 'Brainstorm', hint: 'Groups, notes and pictures go on this canvas.' },
-    flowchart: { name: 'Flowchart', hint: 'Cards and connections go here.' },
   } as const;
 
-  const placeholder = $derived(live.view === 'brief' ? null : PLACEHOLDERS[live.view]);
+  const placeholder = $derived(live.view === 'brainstorm' ? PLACEHOLDERS.brainstorm : null);
 </script>
 
 <div class="flex h-full flex-col">
@@ -22,6 +22,8 @@
   <main class="flex min-h-0 flex-1">
     {#if live.board && live.view === 'brief'}
       <BriefView />
+    {:else if live.board && live.view === 'flowchart'}
+      <FlowchartView />
     {:else}
       <section class="flex flex-1 flex-col items-center justify-center gap-1 text-muted" aria-label={placeholder?.name ?? 'Brief'}>
         {#if live.board && placeholder}

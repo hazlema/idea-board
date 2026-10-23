@@ -38,3 +38,17 @@ button:disabled {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
+
+/* A card or box Claude just changed. */
+@keyframes flash-claude {
+  from {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-claude) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.flash-claude {
+  animation: flash-claude 1.6s ease-out;
+}
