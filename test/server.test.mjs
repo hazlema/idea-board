@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
@@ -168,4 +169,65 @@ test('versions endpoints save, list, preview and restore', () => withServer(asyn
     assert.equal((await fetch(`${base}/api/versions/${id}`)).status, 404, id);
     assert.equal((await post(`/api/versions/${id}/restore`)).status, 404, id);
   }
+}));
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+const ASSET_NAME = /^[0-9a-f]{32}\.png$/;
+
+// A tiny picture host on 127.0.0.1: /pic.png is an image, /page is HTML.
+async function withPictureHost(fn) {
+  const host = http.createServer((req, res) => {
+    if (req.url === '/pic.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PNG); }
+    else if (req.url === '/page') { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html></html>'); }
+  });
+  await new Promise((resolve) => host.listen(0, '127.0.0.1', resolve));
+  try { await fn(`http://127.0.0.1:${host.address().port}`); } finally { host.closeAllConnections(); host.close(); }
+}
+
+test('the server refuses a 40 MB upload and serves stored pictures safely', () => withServer(async ({ base, store }) => {
+  const big = await fetch(`${base}/api/assets`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: Buffer.alloc(40 * 1024 * 1024) });
+  assert.equal(big.status, 413);
+  assert.match((await big.json()).error, /30 MB/);
+  assert.equal(fs.existsSync(store.paths.assets), false);
+
+  const notImage = await fetch(`${base}/api/assets`, { method: 'POST', body: Buffer.from('%PDF-1.4') });
+  assert.equal(notImage.status, 400);
+  assert.match((await notImage.json()).error, /not an image/);
+
+  const up = await fetch(`${base}/api/assets`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: PNG });
+  assert.equal(up.status, 200);
+  const { asset } = await up.json();
+  assert.match(asset, ASSET_NAME);
+
+  const got = await fetch(`${base}/assets/${asset}`);
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('content-type'), 'image/png');
+  assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(got.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.deepEqual(Buffer.from(await got.arrayBuffer()), PNG);
+
+  fs.writeFileSync(path.join(store.paths.assets, 'evil.svg'), '<svg/>');
+  for (const bad of ['../board.json', '..%2Fboard.json', '%2e%2e/board.json', 'evil.svg', `${'0'.repeat(32)}.png/`]) {
+    const res = await fetch(`${base}/assets/${bad}`);
+    assert.ok([400, 404].includes(res.status), `${bad} -> ${res.status}`);
+  }
+  assert.equal((await fetch(`${base}/assets/evil.svg`)).status, 400);
+  assert.equal((await fetch(`${base}/assets/${'0'.repeat(32)}.png`)).status, 404);
+}));
+
+test('POST /api/assets/url fetches a picture and reports failures as 400', () => withPictureHost((pics) => withServer(async ({ base }) => {
+  const post = (url) => fetch(`${base}/api/assets/url`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
+  const ok = await post(`${pics}/pic.png`);
+  assert.equal(ok.status, 200);
+  assert.match((await ok.json()).asset, ASSET_NAME);
+  const html = await post(`${pics}/page`);
+  assert.equal(html.status, 400);
+  assert.match((await html.json()).error, /not an image/);
+  assert.equal((await post(undefined)).status, 400);
+  assert.equal((await post('file:///etc/passwd')).status, 400);
+})));
+
+test('asset routes keep the Host and Origin checks', () => withServer(async ({ base }) => {
+  const res = await fetch(`${base}/api/assets`, { method: 'POST', headers: { origin: 'http://evil.example' }, body: PNG });
+  assert.equal(res.status, 403);
 }));

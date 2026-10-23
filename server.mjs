@@ -5,7 +5,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_ASSET_BYTES } from './lib/assets.mjs';
 import { OpError } from './lib/board.mjs';
+import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence } from './lib/mcp.mjs';
 import { Agent } from './lib/agent.mjs';
@@ -13,6 +15,7 @@ import { Agent } from './lib/agent.mjs';
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 1024 * 1024;
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+const ASSET_TYPES = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function parseArgs(argv) {
@@ -42,6 +45,28 @@ function readBody(req) {
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null')); }
       catch { reject(Object.assign(new Error('body is not valid JSON'), { status: 400 })); }
     });
+    req.on('error', reject);
+  });
+}
+
+// An uploaded picture, read as raw bytes. Past the cap we stop buffering and
+// let the 413 answer close the connection rather than reading the rest.
+function readRawBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const tooLarge = () => Object.assign(new Error('picture is larger than 30 MB'), { status: 413, closeConnection: true });
+    if (Number(req.headers['content-length']) > maxBytes) return reject(tooLarge());
+    let size = 0;
+    const chunks = [];
+    const onData = (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        req.off('data', onData);
+        chunks.length = 0;
+        reject(tooLarge());
+      } else chunks.push(chunk);
+    };
+    req.on('data', onData);
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -135,6 +160,45 @@ export function createServer({ store, agent, presence, port }) {
         if (restore && req.method === 'POST') return sendJson(res, 200, store.restoreVersion(id, 'user'));
       }
 
+      if (url.pathname === '/api/assets' && req.method === 'POST') {
+        const bytes = await readRawBody(req, MAX_ASSET_BYTES);
+        try { return sendJson(res, 200, { asset: store.assets.ingestBuffer(bytes).asset }); }
+        catch (error) {
+          if (error instanceof OpError) return sendJson(res, 400, { error: error.message });
+          throw error;
+        }
+      }
+
+      if (url.pathname === '/api/assets/url' && req.method === 'POST') {
+        const { url: address } = (await readBody(req)) ?? {};
+        if (typeof address !== 'string' || !address.trim()) return sendJson(res, 400, { error: 'url is required' });
+        try { return sendJson(res, 200, { asset: (await store.assets.ingestUrl(address.trim())).asset }); }
+        catch (error) {
+          if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
+          throw error;
+        }
+      }
+
+      if (url.pathname.startsWith('/assets/') && req.method === 'GET') {
+        // The name is checked before the disk is touched, so nothing but a
+        // stored picture can ever be served from here.
+        const name = url.pathname.slice('/assets/'.length);
+        if (!ASSET_NAME.test(name)) return sendJson(res, 400, { error: 'not a picture file name' });
+        let bytes;
+        try { bytes = store.assets.read(name); }
+        catch (error) {
+          if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not found' });
+          throw error;
+        }
+        res.writeHead(200, {
+          'content-type': ASSET_TYPES[name.slice(name.lastIndexOf('.') + 1)],
+          'cache-control': 'public, max-age=31536000, immutable',
+          'x-content-type-options': 'nosniff',
+          'content-length': bytes.length,
+        });
+        return res.end(bytes);
+      }
+
       if (req.method === 'GET') {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
         const file = path.join(PUBLIC_DIR, name);
@@ -145,7 +209,10 @@ export function createServer({ store, agent, presence, port }) {
 
       sendJson(res, 404, { error: 'not found' });
     } catch (error) {
-      if (!res.headersSent) sendJson(res, error.status || 500, { error: error.message });
+      if (!res.headersSent) {
+        if (error.closeConnection) res.setHeader('connection', 'close');
+        sendJson(res, error.status || 500, { error: error.message });
+      }
       if (!error.status) console.error(error);
     }
   });
