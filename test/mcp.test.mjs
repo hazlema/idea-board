@@ -13,7 +13,7 @@ const V2_TOOLS = [
   'add_note', 'update_note', 'add_topic', 'update_topic', 'add_picture_from_url', 'update_picture',
   'move_object', 'delete_object', 'link', 'update_link', 'unlink',
   'rule_out', 'bring_back',
-  'add_node', 'update_node', 'delete_node', 'connect', 'disconnect', 'tidy_layout', 'rename_board',
+  'add_node', 'update_node', 'delete_node', 'connect', 'update_connection', 'disconnect', 'tidy_layout', 'rename_board',
   'undo_reply', 'save_version', 'restore_version', 'export_design_doc',
   'reply', 'wait_for_chat',
 ];
@@ -247,6 +247,26 @@ test('brief, memory, flowchart and title tools', () => withServer(async ({ call,
   await call('tidy_layout', {});
   await call('disconnect', { from: card.id, to: other.id });
   await call('connect', { from: card.id, to: other.id });
+}));
+
+test('Claude can move a card and relabel an existing arrow', () => withServer(async ({ call, store }) => {
+  const a = await call('add_node', { title: 'Start' });
+  const b = await call('add_node', { title: 'End', connect_from: a.id, edge_label: 'old' });
+  const before = { ...store.board.flow.nodes.find((n) => n.id === b.id) };
+  await call('update_node', { id: b.id, x: 700, y: 55 });
+  const card = store.board.flow.nodes.find((n) => n.id === b.id);
+  assert.deepEqual([card.x, card.y], [700, 55]);
+  assert.equal(card.updatedAt, before.updatedAt, 'a move is not an edit');
+  assert.equal(store.board.flow.nodes.find((n) => n.id === a.id).x, 0);
+
+  const edgeId = store.board.flow.edges[0].id;
+  assert.deepEqual((await call('view_board', {})).flowchart.connections, [{ id: edgeId, from: a.id, to: b.id, label: 'old' }]);
+  // connect on an existing pair returns the arrow and keeps its label.
+  assert.deepEqual(await call('connect', { from: a.id, to: b.id, label: 'ignored' }), { id: edgeId, from: a.id, to: b.id, label: 'old' });
+  assert.deepEqual(await call('update_connection', { from: a.id, to: b.id, label: 'new' }), { id: edgeId, from: a.id, to: b.id, label: 'new' });
+  assert.equal(store.board.flow.edges[0].label, 'new');
+  assert.equal((await call('update_connection', { from: a.id, to: b.id })).label, '');
+  assert.match((await call('update_connection', { from: b.id, to: a.id, label: 'x' })).error, /no connection from .* to /);
 }));
 
 test('add_picture_from_url ingests the picture and places it', () => withServer(async ({ call, store }) => {

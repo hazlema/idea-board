@@ -20,7 +20,7 @@ test('Claude edits through MCP show up for the user, attributed to Claude', () =
   await call('update_node', { id: child.id, set_props: { rate: '10%' } });
   const view = await call('view_board', {});
   assert.equal(view.flowchart.nodes.length, 2);
-  assert.deepEqual(view.flowchart.connections, [{ from: root.id, to: child.id, label: 'costs' }]);
+  assert.deepEqual(view.flowchart.connections, [{ id: view.flowchart.connections[0].id, from: root.id, to: child.id, label: 'costs' }]);
   const { board } = await (await fetch(`${base}/api/board`)).json();
   assert.ok(board.flow.nodes.every((n) => n.author === 'claude'));
   const detail = await call('get_node', { id: root.id });
