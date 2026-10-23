@@ -287,6 +287,18 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
   }, { colab: factory });
 });
 
+test('a line-up with an empty model saves, but cannot start', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base, userOp, store }) => {
+    const agents = [LINEUP.agents[0], { model: '', roleId: 'creative' }];
+    assert.equal((await userOp({ ...LINEUP, agents })).status, 200);
+    assert.equal(store.board.colab.lineup.agents[1].model, '');
+    const res = await post(base, '/api/colab/start');
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /Agent 2 has no model/);
+  }, { colab: factory });
+});
+
 test('the library round-trips and rejects duplicate role ids', async () => {
   const { factory } = colabFor();
   await withServer(async ({ base }) => {

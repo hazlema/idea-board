@@ -122,14 +122,19 @@
       <li
         class="rounded-md border bg-raised p-2 {isCurrent(agent) ? 'border-accent' : 'border-line'}"
         aria-current={isCurrent(agent) ? 'true' : undefined}
-        draggable={canEdit}
-        ondragstart={() => (dragFrom = i)}
         ondragover={(e) => e.preventDefault()}
         ondrop={() => drop(i)}
-        ondragend={() => (dragFrom = null)}
       >
         <div class="mb-1 flex items-center gap-2">
-          <span class="text-muted" aria-hidden="true">{canEdit ? '⠿' : ''}</span>
+          <!-- Only the grip drags, so text in the model box can still be selected (Firefox). -->
+          <span
+            class="cursor-grab text-muted select-none"
+            role="presentation"
+            title={canEdit ? 'Drag to reorder' : undefined}
+            draggable={canEdit}
+            ondragstart={() => (dragFrom = i)}
+            ondragend={() => (dragFrom = null)}>{canEdit ? '⠿' : ''}</span
+          >
           <span class="font-semibold text-text">{i + 1}</span>
           <select
             class="min-w-0 flex-1 rounded-md border border-line bg-ink px-1 py-1 text-text disabled:opacity-60"
@@ -166,6 +171,7 @@
         value={rounds}
         onchange={(e) => {
           rounds = Math.round(number(e.currentTarget.value, 1, 50, rounds));
+          e.currentTarget.value = String(rounds);
           send();
         }}
       />
@@ -182,6 +188,7 @@
         value={budget}
         onchange={(e) => {
           budget = number(e.currentTarget.value, 0.1, 100, budget);
+          e.currentTarget.value = String(budget);
           send();
         }}
       />

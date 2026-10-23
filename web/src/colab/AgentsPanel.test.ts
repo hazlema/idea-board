@@ -113,3 +113,11 @@ test('a model list that will not load is said so, and a typed model still works'
   expect(screen.getByLabelText('Model')).toHaveValue('openai/gpt-6.1-sol');
   expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled();
 });
+
+test('an out-of-range rounds value is clamped, sent, and shown clamped', async () => {
+  render(AgentsPanel);
+  const rounds = screen.getByLabelText('Rounds');
+  await fireEvent.change(rounds, { target: { value: '99' } });
+  expect(rounds).toHaveValue(50);
+  expect(lastLineup()).toMatchObject({ type: 'setColabLineup', rounds: 50 });
+});
