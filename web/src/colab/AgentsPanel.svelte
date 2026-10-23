@@ -5,6 +5,7 @@
   import type { LineupAgent } from '$lib/types';
   import { colabState } from './colab.svelte';
   import ModelPicker from './ModelPicker.svelte';
+  import RoleEditor from './RoleEditor.svelte';
 
   const KEY_COMMAND =
     'mkdir -p ~/.config/openrouter && read -rs -p "OpenRouter key: " k && printf \'%s\' "$k" > ~/.config/openrouter/key && chmod 600 ~/.config/openrouter/key; unset k; echo';
@@ -150,6 +151,7 @@
               <option value={role.id}>{role.name}</option>
             {/each}
           </select>
+          {#if colabState.loaded && !roles.some((r) => r.id === agent.roleId)}<span class="text-xs text-accent">Role missing</span>{/if}
           <button type="button" class="px-1 text-muted hover:text-text disabled:opacity-40" aria-label="Remove agent {i + 1}" disabled={!canEdit} onclick={() => remove(i)}>✕</button>
         </div>
         <ModelPicker value={agent.model} models={colabState.models} disabled={!canEdit} onchange={(id) => edit(i, { model: id })} />
@@ -208,6 +210,9 @@
     {#if problem}<p class="text-muted">{problem}</p>{/if}
   {/if}
 
-  <!-- Task 8 mounts the role editor when editingRoles is set. -->
-  <button type="button" class="self-start text-muted underline hover:text-text" data-editing={editingRoles} onclick={() => (editingRoles = true)}>Edit roles…</button>
+  <button type="button" class="self-start text-muted underline hover:text-text" onclick={() => (editingRoles = true)}>Edit roles…</button>
 </aside>
+
+{#if editingRoles}
+  <RoleEditor onclose={() => (editingRoles = false)} />
+{/if}
