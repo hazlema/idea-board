@@ -233,11 +233,11 @@ test('the browser opens with each platform\'s own command', () => {
 
 // A real ColabRun on the test's store, with a fake OpenRouter that never touches the network.
 const SECRET = 'sk-or-test-secret-123';
-function colabFor({ key = SECRET, complete = async () => ({ message: { role: 'assistant', content: 'hello' }, cost: 0.1 }), models } = {}) {
+function colabFor({ key = SECRET, complete = async () => ({ message: { role: 'assistant', content: 'hello' }, cost: 0.1 }), models, imageModels } = {}) {
   const calls = [];
   const factory = (store, presence, claude) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-'));
-    const openrouter = { hasKey: () => Boolean(key), models: models ?? (async () => [{ id: 'acme/alpha-one' }]), complete: async (req) => { calls.push(req); return complete(req); } };
+    const openrouter = { hasKey: () => Boolean(key), models: models ?? (async () => [{ id: 'acme/alpha-one' }]), imageModels: imageModels ?? (async () => [{ id: 'acme/paint' }]), complete: async (req) => { calls.push(req); return complete(req); } };
     return new ColabRun({ store, presence, claude, library: new Library(path.join(dir, 'colab.json')), openrouter });
   };
   return { factory, calls };
@@ -270,6 +270,18 @@ test('models failure answers 502', async () => {
     assert.equal(res.status, 502);
     assert.equal((await res.json()).error, 'offline');
   }, { colab: factory });
+});
+
+test('GET /api/colab/image-models returns the list, or 502', async () => {
+  await withServer(async ({ base }) => {
+    assert.deepEqual(await (await fetch(`${base}/api/colab/image-models`)).json(), { models: [{ id: 'acme/paint' }] });
+  }, { colab: colabFor().factory });
+  const bad = colabFor({ imageModels: async () => { throw new Error('offline'); } });
+  await withServer(async ({ base }) => {
+    const res = await fetch(`${base}/api/colab/image-models`);
+    assert.equal(res.status, 502);
+    assert.equal((await res.json()).error, 'offline');
+  }, { colab: bad.factory });
 });
 
 test('setColabLineup saves, is not in history, and rejects bad numbers', async () => {

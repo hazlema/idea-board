@@ -99,6 +99,9 @@ async function colabRoute(run, room, pathname, req, res) {
   } else if (pathname === '/api/colab/models' && req.method === 'GET') {
     try { sendJson(res, 200, { models: await openrouter.models() }); }
     catch (error) { sendJson(res, 502, { error: error.message }); }
+  } else if (pathname === '/api/colab/image-models' && req.method === 'GET') {
+    try { sendJson(res, 200, { models: await openrouter.imageModels() }); }
+    catch (error) { sendJson(res, 502, { error: error.message }); }
   } else if (pathname === '/api/colab/library' && req.method === 'PUT') {
     const body = (await readBody(req)) ?? {};
     try {

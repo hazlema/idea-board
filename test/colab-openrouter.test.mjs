@@ -67,7 +67,7 @@ test('models keeps tool-capable entries, prices per million, and caches', async 
     { id: 'b/plain', name: 'B', pricing: {}, supported_parameters: ['temperature'] },
   ];
   const client = new OpenRouter({ fetch: async () => (calls++, json({ data })) });
-  const expected = [{ id: 'a/tools', name: 'A', promptPrice: 3, completionPrice: 15, context: 1000 }];
+  const expected = [{ id: 'a/tools', name: 'A', promptPrice: 3, completionPrice: 15, context: 1000, vision: false }];
   assert.deepEqual(await client.models(), expected);
   assert.deepEqual(await client.models(), expected);
   assert.equal(calls, 1);
@@ -123,4 +123,44 @@ test("the caller's signal cuts the call short and is not retried", async () => {
   cut.abort(why);
   await assert.rejects(pending, (e) => e === why);
   assert.equal(calls, 1);
+});
+
+const PNG_1x1_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+test('models carry vision', async () => {
+  const data = [
+    { id: 'a/sees', supported_parameters: ['tools'], architecture: { input_modalities: ['text', 'image'] } },
+    { id: 'b/blind', supported_parameters: ['tools'], architecture: { input_modalities: ['text'] } },
+  ];
+  const client = new OpenRouter({ fetch: async () => json({ data }) });
+  assert.deepEqual((await client.models()).map((m) => [m.id, m.vision]), [['a/sees', true], ['b/blind', false]]);
+});
+
+test('imageModels lists image-output models without requiring tools, sharing one fetch', async () => {
+  let calls = 0;
+  const data = [
+    { id: 'a/paint', name: 'Paint', architecture: { output_modalities: ['image', 'text'] } },
+    { id: 'b/text', supported_parameters: ['tools'], architecture: { output_modalities: ['text'] } },
+  ];
+  const client = new OpenRouter({ fetch: async () => (calls++, json({ data })) });
+  assert.deepEqual((await client.imageModels()).map((m) => m.id), ['a/paint']);
+  assert.deepEqual((await client.models()).map((m) => m.id), ['b/text']);
+  assert.equal(calls, 1);
+});
+
+test('image decodes a data URL and returns the cost', async () => {
+  let sent;
+  const reply = json({ choices: [{ message: { content: '', images: [{ image_url: { url: `data:image/png;base64,${PNG_1x1_BASE64}` } }] } }], usage: { cost: 0.04 } });
+  const client = new OpenRouter({ key: 'k', fetch: async (url, init) => ((sent = JSON.parse(init.body)), reply) });
+  const result = await client.image({ model: 'a/paint', prompt: 'a cat' });
+  assert.deepEqual(result.data, Buffer.from(PNG_1x1_BASE64, 'base64'));
+  assert.equal(result.cost, 0.04);
+  assert.deepEqual(sent.modalities, ['image', 'text']);
+  assert.deepEqual(sent.messages, [{ role: 'user', content: 'a cat' }]);
+});
+
+test('image without a picture throws with the cost', async () => {
+  const reply = json({ choices: [{ message: { content: 'sorry' } }], usage: { cost: 0.01 } });
+  const client = new OpenRouter({ key: 'k', fetch: async () => reply });
+  await assert.rejects(client.image({ model: 'a/paint', prompt: 'x' }), (e) => e instanceof OpenRouterError && /returned no picture/.test(e.message) && e.cost === 0.01);
 });
