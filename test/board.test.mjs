@@ -146,3 +146,17 @@ test('migrateBoard is idempotent and fills missing keys', () => {
   assert.equal(partial.claudeSessionId, null);
   assert.equal(partial.brief.sections.length, 1);
 });
+
+test('an AI chat message may carry turn stats; a user message may not, and junk is refused', () => {
+  const board = emptyBoard();
+  applyOp(board, { type: 'chat', text: 'done', stats: { seconds: 42.4, cost: 0.031, calls: 3, promptTokens: 9000, cachedTokens: 6000 } }, 'claude');
+  assert.deepEqual(board.chat.at(-1).stats, { seconds: 42.4, cost: 0.031, calls: 3, promptTokens: 9000, cachedTokens: 6000 });
+  applyOp(board, { type: 'chat', text: 'hi', stats: { seconds: 1, cost: 0, calls: 1, promptTokens: 1, cachedTokens: 0 } }, 'user');
+  assert.equal(board.chat.at(-1).stats, undefined);
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'x', stats: { seconds: 'a' } }, 'claude'), /stats/);
+});
+
+test('a board saved before the turn limit existed gets the 30 minute default', () => {
+  const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30 });
+});

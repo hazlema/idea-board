@@ -13,20 +13,30 @@ const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
 const presence = { attached: () => false };
 
-function setup({ agents = [A, B], rounds = 2, budget = 5, complete } = {}) {
+function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   Object.assign(store.board.colab.lineup, { agents, rounds, budget });
   const calls = [];
-  const openrouter = { complete: async (req) => { calls.push(structuredClone(req)); return complete(req, calls.length); } };
-  const run = new ColabRun({ store, presence, library: new Library(path.join(dir, 'colab.json')), openrouter });
+  const openrouter = {
+    complete: async (req) => {
+      const { signal, ...rest } = req;
+      calls.push(structuredClone(rest));
+      return complete(req, calls.length);
+    },
+  };
+  const run = new ColabRun({ store, presence, library: new Library(path.join(dir, 'colab.json')), openrouter, maxConversation, turnLimit, closingLimit });
   return { dir, store, run, calls };
 }
 
 const text = (content) => ({ message: { role: 'assistant', content }, cost: 0.1 });
 const toolCall = (name, args, id = 'c1') => ({ message: { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: args } }] }, cost: 0.1 });
+// The messages of the turn in progress (conversations carry over between turns).
+const thisTurn = (req) => req.messages.slice(req.messages.findLastIndex((m) => m.role === 'user'));
 // Scripted turn: first call adds a note, the next answers "done".
-const noteThenDone = (req) => (req.messages.some((m) => m.role === 'tool') ? text('done') : toolCall('add_note', '{"text":"hi"}'));
+const noteThenDone = (req) => (thisTurn(req).some((m) => m.role === 'tool') ? text('done') : toolCall('add_note', '{"text":"hi"}'));
+// A call that never answers on its own: it ends only when the turn cuts it short.
+const hang = (req) => new Promise((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason)));
 const chatPosts = (store) => store.board.chat.filter((m) => m.role !== 'user');
 const hostSays = (store, t = 'go') => store.apply({ type: 'chat', text: t }, 'user');
 
@@ -265,4 +275,174 @@ test('a reply over 20 000 characters is posted cut, not lost', async () => {
   await run.finished;
   const post = chatPosts(store)[0].text;
   assert.ok(post.length < 20_000 && post.endsWith('… (cut)'));
+});
+
+test('the run says what the working agent is doing, step by step, and clears it when the turn ends', async () => {
+  const { store, run } = setup({
+    agents: [A],
+    rounds: 1,
+    complete: (req) => {
+      const tools = req.messages.filter((m) => m.role === 'tool').length;
+      if (tools === 0) return toolCall('view_board', '{}');
+      if (tools === 1) return toolCall('add_group', '{"title":"Heists"}', 'c2');
+      return text('done');
+    },
+  });
+  const seen = [];
+  store.subscribe((e) => e.type === 'colab' && seen.at(-1) !== e.status.activity && seen.push(e.status.activity));
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.deepEqual(seen.filter(Boolean), ['thinking', 'reading the board', 'thinking', 'adding group “Heists”', 'thinking']);
+  assert.equal(run.status.activity, null);
+});
+
+test('the run lists what the working agent has done so far this turn; a batch counts its changes', async () => {
+  const { store, run } = setup({
+    agents: [A],
+    rounds: 1,
+    complete: (req) => {
+      const tools = req.messages.filter((m) => m.role === 'tool').length;
+      if (tools === 0) return toolCall('list_versions', '{}');
+      if (tools === 1) return toolCall('batch', JSON.stringify({ calls: [{ tool: 'add_note', args: { text: 'a' } }, { tool: 'add_note', args: { text: 'b' } }] }), 'c2');
+      if (tools === 2) return toolCall('add_group', '{"title":"Heists"}', 'c3');
+      return text('done');
+    },
+  });
+  const dones = [];
+  store.subscribe((e) => e.type === 'colab' && dones.push(JSON.stringify(e.status.done)));
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.ok(dones.includes(JSON.stringify(["looked up versions", "made 2 changes", "added group “Heists”"])), dones.join("\n"));
+  assert.deepEqual(run.status.done, []);
+});
+
+// ---- conversations kept between turns ----
+
+const lastUser = (req) => req.messages.filter((m) => m.role === 'user').at(-1);
+const textOf = (content) => (Array.isArray(content) ? content.map((p) => p.text).join('') : content);
+
+test("an agent's first turn carries the full board, so it doesn't have to ask for it", async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 1, complete: () => text('done') });
+  store.apply({ type: 'addObject', kind: 'group', title: 'Heists' }, 'user');
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.match(textOf(lastUser(calls[0]).content), /The board right now[\s\S]*Heists/);
+});
+
+test('its next turn continues the same conversation and adds only what changed since', async () => {
+  const { store, run, calls } = setup({ rounds: 2, complete: noteThenDone });
+  run.start();
+  hostSays(store, 'kickoff');
+  run.onUserMessage();
+  await run.finished;
+  const forA = calls.filter((c) => c.model === A.model);
+  const firstOfTurn2 = forA.find((c) => textOf(lastUser(c).content).includes('Since your last turn'));
+  assert.ok(firstOfTurn2, 'a later turn says what changed');
+  // The same conversation: it starts with turn one's messages.
+  assert.deepEqual(firstOfTurn2.messages.slice(0, 2), forA[0].messages.slice(0, 2));
+  const update = textOf(lastUser(firstOfTurn2).content);
+  assert.match(update, /Beta Two/); // the other agent's change and its chat note
+  assert.match(update, /done/);
+  assert.doesNotMatch(update, /The board right now/);
+});
+
+test('Claude and Gemini models get cache markers; others are left to cache on their own', async () => {
+  const claude = { model: 'anthropic/claude-x', roleId: 'creative' };
+  const { store, run, calls } = setup({ agents: [claude, B], rounds: 1, complete: () => text('done') });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  const forClaude = calls.find((c) => c.model === claude.model);
+  assert.deepEqual(forClaude.messages[0].content.at(-1).cache_control, { type: 'ephemeral' });
+  assert.equal(typeof calls.find((c) => c.model === B.model).messages[0].content, 'string');
+});
+
+test('a conversation that grows too long starts over with the full board', async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 2, complete: noteThenDone, maxConversation: 10 });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  const turnStarts = calls.filter((c) => c.messages.length === 2);
+  assert.equal(turnStarts.length, 2);
+  for (const c of turnStarts) assert.match(textOf(lastUser(c).content), /The board right now/);
+});
+
+test("each agent's chat note carries its turn's stats: time, cost, calls and cache share", async () => {
+  const { store, run } = setup({
+    agents: [A],
+    rounds: 1,
+    complete: (req) => ({ ...noteThenDone(req), promptTokens: 1000, cachedTokens: 600 }),
+  });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  const { stats } = chatPosts(store)[0];
+  assert.equal(stats.calls, 2);
+  assert.ok(Math.abs(stats.cost - 0.2) < 1e-9);
+  assert.equal(stats.promptTokens, 2000);
+  assert.equal(stats.cachedTokens, 1200);
+  assert.ok(stats.seconds >= 0);
+});
+
+test('a turn that runs past its time limit is cut short and asked for its closing message', async () => {
+  const { store, run, calls } = setup({ rounds: 1, turnLimit: 30, complete: (req, n) => (n === 1 ? hang(req) : n === 2 ? text('wrapped up') : text('fine')) });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.equal(calls[1].tools, undefined);
+  assert.match(calls[1].messages.at(-1).content, /turn is up/);
+  const [first, second] = chatPosts(store);
+  assert.equal(first.text, 'wrapped up');
+  assert.equal(first.stats.calls, 2);
+  assert.equal(second.text, 'fine');
+});
+
+test('when even the closing message is too slow, the turn ends with a note and the next agent plays', async () => {
+  const { store, run } = setup({ rounds: 1, turnLimit: 30, closingLimit: 30, complete: (req, n) => (n <= 2 ? hang(req) : text('fine')) });
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  const [first, second] = chatPosts(store);
+  assert.match(first.text, /out of time/);
+  assert.ok(first.stats);
+  assert.equal(second.text, 'fine');
+});
+
+test('stop cuts the working call short instead of waiting for it', async () => {
+  let run;
+  const { store, calls, ...rest } = setup({
+    complete: (req) => {
+      setTimeout(() => run.stop(), 5);
+      return hang(req);
+    },
+  });
+  run = rest.run;
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.equal(calls.length, 1);
+  assert.deepEqual(chatPosts(store).map((m) => m.text), ['(stopped partway through my turn)']);
+  assert.equal(run.status.state, 'idle');
+});
+
+test("the turn limit comes from the line-up, in minutes", async () => {
+  const { store, run } = setup({ agents: [A], rounds: 1, complete: (req, n) => (n === 1 ? hang(req) : text('wrapped up')) });
+  store.board.colab.lineup.turnLimit = 0.0005; // 30 ms
+  run.start();
+  hostSays(store);
+  run.onUserMessage();
+  await run.finished;
+  assert.equal(chatPosts(store)[0].text, 'wrapped up');
 });

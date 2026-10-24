@@ -277,12 +277,17 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
   const { factory } = colabFor();
   await withServer(async ({ base, userOp, store }) => {
     assert.equal((await userOp(LINEUP)).status, 200);
-    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1 });
+    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30 });
+    assert.equal((await userOp({ ...LINEUP, turnLimit: 45 })).status, 200);
+    assert.equal(store.board.colab.lineup.turnLimit, 45);
     assert.equal((await userOp({ type: 'setColabExtras', rules: 'be kind', roles: { creative: 'wild' } })).status, 200);
     assert.equal(store.board.colab.extras.rules, 'be kind');
     assert.equal((await (await fetch(`${base}/api/history`)).json()).entries.length, 0);
     assert.equal((await userOp({ ...LINEUP, rounds: 51 })).status, 400);
     assert.equal((await userOp({ ...LINEUP, budget: 0.01 })).status, 400);
+    assert.equal((await userOp({ ...LINEUP, turnLimit: 0 })).status, 400);
+    assert.equal((await userOp({ ...LINEUP, turnLimit: 121 })).status, 400);
+    assert.equal((await userOp({ ...LINEUP, turnLimit: 2.5 })).status, 400);
     assert.equal((await userOp({ ...LINEUP, agents: Array(9).fill(LINEUP.agents[0]) })).status, 400);
   }, { colab: factory });
 });

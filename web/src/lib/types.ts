@@ -139,6 +139,16 @@ export interface ChatMessage {
   at: string;
   handled: boolean;
   context?: Pointer[];
+  /** On an agent's note: what its turn took. */
+  stats?: TurnStats;
+}
+
+export interface TurnStats {
+  seconds: number;
+  cost: number;
+  calls: number;
+  promptTokens: number;
+  cachedTokens: number;
 }
 
 export interface Board {
@@ -173,7 +183,8 @@ export interface RosterEntry {
 
 export interface Colab {
   roster: RosterEntry[];
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number };
+  /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
 }
@@ -198,7 +209,11 @@ export interface RunStatus {
   round: number;
   rounds: number;
   /** Roster id of the agent whose turn it is. */
-  current: string | null;
+  current: `agent:${string}` | null;
+  /** What the working agent is doing right now ("reading the board"), or null. */
+  activity?: string | null;
+  /** What it has done so far this turn ("read the board", "made 3 changes"). */
+  done?: string[];
   spent: number;
   budget: number;
 }

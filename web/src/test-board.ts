@@ -12,6 +12,6 @@ export function emptyBoard(): Board {
     ruledOut: [],
     chat: [],
     claudeSessionId: null,
-    colab: { roster: [], lineup: { agents: [], rounds: 5, budget: 5 }, extras: { rules: '', roles: {} }, run: null },
+    colab: { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30 }, extras: { rules: '', roles: {} }, run: null },
   };
 }

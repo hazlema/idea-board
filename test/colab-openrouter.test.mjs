@@ -10,7 +10,7 @@ test('complete returns the message and the cost, and sends the key', async () =>
   let seen;
   const client = new OpenRouter({ key: 'k', fetch: async (url, init) => ((seen = { url, init }), OK) });
   const result = await client.complete({ ...args, settings: { temperature: 0.5 } });
-  assert.deepEqual(result, { message: { role: 'assistant', content: 'hi' }, cost: 0.012 });
+  assert.deepEqual(result, { message: { role: 'assistant', content: 'hi' }, cost: 0.012, promptTokens: 0, cachedTokens: 0 });
   assert.equal(seen.init.headers.authorization, 'Bearer k');
   const sent = JSON.parse(seen.init.body);
   assert.equal(sent.temperature, 0.5);
@@ -100,4 +100,27 @@ test('each attempt has a time limit, and a timeout is retried', async () => {
   const client = new OpenRouter({ key: 'k', fetch, sleep: async () => {} });
   assert.equal((await client.complete(args)).message.content, 'hi');
   assert.ok(signals.every((s) => s instanceof AbortSignal));
+});
+
+test('complete reports prompt tokens and how many came from the cache', async () => {
+  const body = { choices: [{ message: { role: 'assistant', content: 'hi' } }], usage: { cost: 0.01, prompt_tokens: 20000, prompt_tokens_details: { cached_tokens: 15000 } } };
+  const client = new OpenRouter({ key: 'k', fetch: async () => json(body) });
+  const result = await client.complete(args);
+  assert.equal(result.promptTokens, 20000);
+  assert.equal(result.cachedTokens, 15000);
+});
+
+test("the caller's signal cuts the call short and is not retried", async () => {
+  let calls = 0;
+  const fetch = (url, init) => {
+    calls += 1;
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  };
+  const client = new OpenRouter({ key: 'k', fetch, sleep: async () => {} });
+  const cut = new AbortController();
+  const why = new Error('out of time');
+  const pending = client.complete({ ...args, signal: cut.signal });
+  cut.abort(why);
+  await assert.rejects(pending, (e) => e === why);
+  assert.equal(calls, 1);
 });

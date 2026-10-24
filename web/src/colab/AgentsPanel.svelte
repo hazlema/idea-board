@@ -1,9 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import * as api from '$lib/api';
+  import { authorColor } from '$lib/authors';
   import { live } from '$lib/live.svelte';
   import type { LineupAgent } from '$lib/types';
   import { colabState } from './colab.svelte';
+  import AddAgentDialog from './AddAgentDialog.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import RoleEditor from './RoleEditor.svelte';
 
@@ -14,7 +16,9 @@
   let agents = $state<LineupAgent[]>([]);
   let rounds = $state(5);
   let budget = $state(5);
+  let turnLimit = $state(30);
   let editingRoles = $state(false);
+  let adding = $state(false);
   let dragFrom = $state<number | null>(null);
 
   $effect(() => {
@@ -24,6 +28,7 @@
       agents = lineup.agents.map((a) => ({ ...a }));
       rounds = lineup.rounds;
       budget = lineup.budget;
+      turnLimit = lineup.turnLimit ?? 30;
     });
   });
 
@@ -50,9 +55,14 @@
   });
 
   const isCurrent = (a: LineupAgent): boolean => !!status?.current && status.current === roster.find((r) => r.id === `agent:${a.model}=${a.roleId}`)?.id;
+  // The working agent's colour, as its name shows in chat.
+  const colorOf = (a: LineupAgent): string => authorColor(live.board, `agent:${a.model}=${a.roleId}`);
+
+  // "$0.42 of $5"; small spends keep a third decimal, so money spent never reads $0.00.
+  const money = (n: number): string => (Number.isInteger(n) ? String(n) : n > 0 && n < 0.1 ? n.toFixed(3) : n.toFixed(2));
 
   function send(): void {
-    void live.send({ type: 'setColabLineup', agents, rounds, budget });
+    void live.send({ type: 'setColabLineup', agents, rounds, budget, turnLimit });
   }
 
   function edit(index: number, patch: Partial<LineupAgent>): void {
@@ -60,8 +70,9 @@
     send();
   }
 
-  function add(): void {
-    agents = [...agents, { model: '', roleId: roles.some((r) => r.id === 'creative') ? 'creative' : (roles[0]?.id ?? 'creative'), settings: {} }];
+  function add(agent: LineupAgent): void {
+    adding = false;
+    agents = [...agents, agent];
     send();
   }
 
@@ -103,7 +114,10 @@
 </script>
 
 <aside class="flex w-65 shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-panel p-3 text-sm" aria-label="Agents">
-  <h2 class="text-xs font-semibold tracking-wide text-muted uppercase">Agents</h2>
+  <div class="flex items-baseline justify-between">
+    <h2 class="text-xs font-semibold tracking-wide text-muted uppercase">Agents</h2>
+    {#if status && busy}<span class="text-muted" aria-live="polite">${money(status.spent)} of ${money(status.budget)}</span>{/if}
+  </div>
 
   {#if colabState.loaded && !colabState.hasKey}
     <div class="rounded-md border border-line bg-raised p-2 text-muted">
@@ -121,7 +135,9 @@
   <ol class="flex flex-col gap-2">
     {#each agents as agent, i (i)}
       <li
-        class="rounded-md border bg-raised p-2 {isCurrent(agent) ? 'border-accent' : 'border-line'}"
+        class="rounded-md border p-2 {isCurrent(agent) ? '' : 'border-line bg-raised'}"
+        style:border-color={isCurrent(agent) ? colorOf(agent) : undefined}
+        style:background={isCurrent(agent) ? `color-mix(in srgb, ${colorOf(agent)} 12%, var(--color-raised))` : undefined}
         aria-current={isCurrent(agent) ? 'true' : undefined}
         ondragover={(e) => e.preventDefault()}
         ondrop={(e) => {
@@ -129,10 +145,11 @@
           drop(i);
         }}
       >
-        <div class="mb-1 flex items-center gap-2">
+        <!-- As in the design: the model first ("1 · Claude Sonnet 5.5"), then its role. -->
+        <div class="flex items-start gap-1.5">
           <!-- Only the grip drags, so text in the model box can still be selected (Firefox). -->
           <span
-            class="cursor-grab text-muted select-none"
+            class="mt-1 w-3 cursor-grab text-muted select-none"
             role="presentation"
             title={canEdit ? 'Drag to reorder' : undefined}
             draggable={canEdit}
@@ -142,9 +159,16 @@
             }}
             ondragend={() => (dragFrom = null)}>{canEdit ? '⠿' : ''}</span
           >
-          <span class="font-semibold text-text">{i + 1}</span>
+          <span class="mt-1 font-semibold text-text">{i + 1} ·</span>
+          <div class="min-w-0 flex-1">
+            <ModelPicker value={agent.model} models={colabState.models} disabled={!canEdit} onchange={(id) => edit(i, { model: id })} />
+          </div>
+          <button type="button" class="mt-0.5 px-1 text-muted hover:text-text disabled:opacity-40" aria-label="Remove agent {i + 1}" disabled={!canEdit} onclick={() => remove(i)}>✕</button>
+        </div>
+        <label class="mt-1 flex items-center gap-2 pl-[1.6rem] text-muted"
+          >Role:
           <select
-            class="min-w-0 flex-1 rounded-md border border-line bg-ink px-1 py-1 text-text disabled:opacity-60"
+            class="min-w-0 flex-1 rounded-md border border-line bg-ink px-1 py-0.5 text-text disabled:opacity-60"
             aria-label="Role"
             disabled={!canEdit}
             value={agent.roleId}
@@ -157,15 +181,16 @@
               <option value={role.id}>{role.name}</option>
             {/each}
           </select>
-          {#if colabState.loaded && !roles.some((r) => r.id === agent.roleId)}<span class="text-xs text-accent">Role missing</span>{/if}
-          <button type="button" class="px-1 text-muted hover:text-text disabled:opacity-40" aria-label="Remove agent {i + 1}" disabled={!canEdit} onclick={() => remove(i)}>✕</button>
-        </div>
-        <ModelPicker value={agent.model} models={colabState.models} disabled={!canEdit} onchange={(id) => edit(i, { model: id })} />
+        </label>
+        {#if colabState.loaded && !roles.some((r) => r.id === agent.roleId)}<p class="mt-1 pl-[1.6rem] text-xs text-accent">Role missing</p>{/if}
+        {#if isCurrent(agent)}
+          <p class="mt-1 pl-[1.6rem] text-xs font-medium" style:color={colorOf(agent)}><span class="animate-pulse">●</span> {status?.activity ?? 'taking its turn'}…</p>
+        {/if}
       </li>
     {/each}
   </ol>
 
-  <button type="button" class="rounded-md border border-line px-2 py-1 text-text hover:border-muted disabled:opacity-40" disabled={!canEdit} onclick={add}>+ Add agent</button>
+  <button type="button" class="rounded-md border border-line px-2 py-1 text-text hover:border-muted disabled:opacity-40" disabled={!canEdit} onclick={() => (adding = true)}>+ Add agent</button>
 
   <div class="flex gap-2">
     <label class="flex flex-1 flex-col gap-0.5 text-muted"
@@ -202,22 +227,38 @@
       />
     </label>
   </div>
-
-  {#if status && busy}
-    <p class="text-muted" aria-live="polite">${status.spent.toFixed(2)} of ${status.budget}</p>
-  {/if}
+  <label class="flex items-center gap-2 text-muted" title="How long one agent's turn may take; then it is asked to wrap up. Slow models can need 20 minutes."
+    >Turn limit (min)
+    <input
+      type="number"
+      min="1"
+      max="120"
+      class="w-20 rounded-md border border-line bg-ink px-2 py-1 text-text disabled:opacity-60"
+      disabled={!canEdit}
+      value={turnLimit}
+      onchange={(e) => {
+        turnLimit = Math.round(number(e.currentTarget.value, 1, 120, turnLimit));
+        e.currentTarget.value = String(turnLimit);
+        send();
+      }}
+    />
+  </label>
 
   {#if status?.state === 'running' || status?.state === 'waiting' || status?.state === 'stopping'}
-    <button type="button" class="rounded-md border border-line bg-raised px-3 py-1.5 text-text hover:border-muted disabled:opacity-60" disabled={status.state === 'stopping'} onclick={stop}
+    <button type="button" class="rounded-md border border-rose-400 px-3 py-1.5 font-semibold text-rose-400 hover:bg-rose-400/10 disabled:opacity-60" disabled={status.state === 'stopping'} onclick={stop}
       >{status.state === 'stopping' ? 'Stopping…' : 'Stop'}</button
     >
   {:else}
     <button type="button" class="rounded-md bg-accent px-3 py-1.5 font-semibold text-ink disabled:opacity-40" disabled={!!problem || !canEdit} onclick={start}>Start</button>
-    {#if problem}<p class="text-muted">{problem}</p>{/if}
+    <p class="text-muted">{problem ?? 'Start brings them in; they wait for your first message.'}</p>
   {/if}
 
   <button type="button" class="self-start text-muted underline hover:text-text" onclick={() => (editingRoles = true)}>Edit roles…</button>
 </aside>
+
+{#if adding}
+  <AddAgentDialog models={colabState.models} modelsError={colabState.modelsError} {roles} onadd={add} onclose={() => (adding = false)} />
+{/if}
 
 {#if editingRoles}
   <RoleEditor onclose={() => (editingRoles = false)} />

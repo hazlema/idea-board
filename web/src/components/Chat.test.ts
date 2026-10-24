@@ -82,7 +82,9 @@ test('messages show who said them, and the agent status line follows the agent',
   live.agent = 'working';
   render(Chat);
   expect(screen.getByText('You')).toBeInTheDocument();
-  expect(screen.getByText('Claude')).toBeInTheDocument();
+  expect(screen.getAllByText('Claude')[0]).toBeInTheDocument();
+  // The background Claude at work also gets the live line at the end of the chat.
+  expect(screen.getByRole('status', { name: 'Working' })).toHaveTextContent('working on the board');
   expect(screen.getByText('Wizards could be a class.')).toBeInTheDocument();
   expect(screen.getByText('Claude is working on the board')).toBeInTheDocument();
 });
@@ -129,11 +131,17 @@ test('an agent message is labelled with its roster name', () => {
   expect(screen.getByText('Y · QA')).toBeInTheDocument();
 });
 
-test('the status line shows the round and whose turn it is', () => {
+test('the status line shows the turn, the round and whose turn it is', () => {
   withRoster();
+  // Three agents; the agent is second in the line-up, so round 2 is turns 4–6 and this is turn 5.
+  live.board!.colab.lineup.agents = [
+    { model: 'a/a', roleId: 'creative', settings: {} },
+    { model: 'x/y', roleId: 'qa', settings: {} },
+    { model: 'b/b', roleId: 'foreman', settings: {} },
+  ];
   live.colab = { state: 'running', round: 2, rounds: 5, current: agent, spent: 0, budget: 5 };
   render(Chat);
-  expect(screen.getByText("Round 2 of 5 · Y's turn")).toBeInTheDocument();
+  expect(screen.getByText("Turn 5 of 15 · Round 2 of 5 · Y's turn")).toBeInTheDocument();
   live.colab = null;
 });
 
@@ -142,4 +150,26 @@ test('a waiting run says so', () => {
   render(Chat);
   expect(screen.getByText('Waiting for your first message')).toBeInTheDocument();
   live.colab = null;
+});
+
+test('while an agent works, the chat ends with a live line saying who it is and what it is doing', async () => {
+  withRoster();
+  live.colab = { state: 'running', round: 1, rounds: 5, current: agent, spent: 0, budget: 5, activity: 'thinking', done: ['read the board', 'made 3 changes'] };
+  render(Chat);
+  const working = screen.getByRole('status', { name: 'Working' });
+  expect(working).toHaveTextContent('Y · QA');
+  expect(working).toHaveTextContent('thinking…');
+  expect(working).toHaveTextContent('· read the board');
+  expect(working).toHaveTextContent('· made 3 changes');
+
+  live.colab = { state: 'idle', round: 1, rounds: 5, current: null, spent: 0, budget: 5, activity: null };
+  await waitFor(() => expect(screen.queryByRole('status', { name: 'Working' })).toBeNull());
+  live.colab = null;
+});
+
+test("an agent's note ends with what its turn took: time, cost, calls and the share read from cache", () => {
+  withRoster();
+  live.board!.chat[0].stats = { seconds: 102.4, cost: 0.0312, calls: 3, promptTokens: 40000, cachedTokens: 27000 };
+  render(Chat);
+  expect(screen.getByText('1 min 42 s · $0.031 · 3 calls · 68% read from cache')).toBeInTheDocument();
 });
