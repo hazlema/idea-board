@@ -415,3 +415,62 @@ test('the tool runner acts as the author it was given, claude by default', async
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+test('wait_for_chat skips messages not owed by Claude', () => withServer(async ({ call, userOp }) => {
+  await userOp({ type: 'chat', text: 'not you', owed: [] });
+  await userOp({ type: 'chat', text: 'you', owed: ['claude'] });
+  const waited = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.deepEqual(waited.messages.map((m) => m.text), ['you']);
+}));
+
+test('a run turn is offered through wait_for_chat and finished by reply', () => withServer(async ({ call, store, presence }) => {
+  const offer = presence.offerTurn('Round 1: your turn', { timeoutMs: 2000 });
+  const waited = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.deepEqual(waited.messages, []);
+  assert.equal(waited.turn.prompt, 'Round 1: your turn');
+  assert.match(waited.next, /It is your turn in the agents' run/);
+  const replied = await call('reply', { text: 'did it' });
+  assert.equal(replied.turn, 'done');
+  assert.equal(await offer, true);
+  const last = store.board.chat.at(-1);
+  assert.equal(last.role, 'claude');
+  assert.equal(last.text, 'did it');
+}));
+
+test('a turn offered while the session is already waiting wakes the wait', () => withServer(async ({ call, presence }) => {
+  const waiting = call('wait_for_chat', { timeout_seconds: 5 });
+  await new Promise((r) => setTimeout(r, 50));
+  const offer = presence.offerTurn('now', { timeoutMs: 2000 });
+  assert.equal((await waiting).turn.prompt, 'now');
+  await call('reply', { text: 'ok' });
+  assert.equal(await offer, true);
+}));
+
+test('a turn reply does not clear what the user still owes Claude', () => withServer(async ({ call, userOp, store, presence }) => {
+  await userOp({ type: 'chat', text: 'question', owed: ['claude'] });
+  const offer = presence.offerTurn('go', { timeoutMs: 2000 });
+  await call('wait_for_chat', { timeout_seconds: 1 });
+  await call('reply', { text: 'turn post' });
+  await offer;
+  assert.deepEqual(store.board.chat.find((m) => m.role === 'user').owed, ['claude']);
+}));
+
+test('an unanswered turn times out', () => withServer(async ({ call, presence }) => {
+  assert.equal(await presence.offerTurn('x', { timeoutMs: 100 }), false);
+  const replied = await call('reply', { text: 'late' });
+  assert.equal('turn' in replied, false);
+}));
+
+test('an aborted turn resolves false and a second offer is rejected while one is pending', () => withServer(async ({ presence }) => {
+  const controller = new AbortController();
+  const offer = presence.offerTurn('x', { timeoutMs: 5000, signal: controller.signal });
+  await assert.rejects(async () => presence.offerTurn('y', { timeoutMs: 100 }), /a turn is already offered/);
+  controller.abort();
+  assert.equal(await offer, false);
+}));
+
+test('your_role appears when set', () => withServer(async ({ call, presence }) => {
+  presence.role = () => 'Foreman job';
+  const waited = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.equal(waited.your_role, 'Foreman job');
+}));

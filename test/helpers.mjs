@@ -42,7 +42,7 @@ export async function withServer(fn, { graceMs, distDir, colab } = {}) {
   };
   const userOp = (op, headers = {}) => fetch(`${base}/api/op`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ op }) });
   try {
-    await fn({ base, colab: colabRun, rpc, call, userOp, store, nudges, port });
+    await fn({ base, colab: colabRun, rpc, call, userOp, store, presence, nudges, port });
   } finally {
     real.close();
     store.historyLog.flush();
