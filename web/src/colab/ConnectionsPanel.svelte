@@ -17,7 +17,7 @@
   let rounds = $state(5);
   let budget = $state(5);
   let turnLimit = $state(30);
-  let claudeRoleId = $state('creative');
+  let claudeRoleId = $state('foreman');
   let editingRoles = $state(false);
   let adding = $state(false);
   let dragFrom = $state<number | null>(null);
@@ -30,7 +30,7 @@
       rounds = lineup.rounds;
       budget = lineup.budget;
       turnLimit = lineup.turnLimit ?? 30;
-      claudeRoleId = lineup.claudeRoleId ?? 'creative';
+      claudeRoleId = lineup.claudeRoleId ?? 'foreman';
     });
   });
 

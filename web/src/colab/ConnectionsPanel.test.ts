@@ -439,3 +439,19 @@ test('no Start or Stop button', () => {
   expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
 });
+
+test("a line-up with no Claude role falls back to the Foreman, as the server does", async () => {
+  vi.mocked(api.colab).mockResolvedValue({
+    status: idle,
+    hasKey: true,
+    library: { rules: '', roles: [...library.roles, { id: 'foreman', name: 'Foreman', job: '' }] },
+    connections: [],
+  });
+  const board = emptyBoard();
+  const { claudeRoleId: _unset, ...lineup } = board.colab.lineup;
+  board.colab.lineup = lineup as typeof board.colab.lineup;
+  live.board = board;
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.library.roles.some((r) => r.id === 'foreman')).toBe(true));
+  expect(screen.getByRole('combobox', { name: 'Claude role' })).toHaveValue('foreman');
+});
