@@ -5,7 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
-import { browserCommand } from '../server.mjs';
+import { browserCommand, parseArgs } from '../server.mjs';
 import { Library } from '../lib/colab/library.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 
@@ -260,7 +260,6 @@ test('GET /api/colab reports hasKey and never the key itself', async () => {
   const none = colabFor({ key: null });
   await withServer(async ({ base }) => {
     assert.equal((await (await fetch(`${base}/api/colab`)).json()).hasKey, false);
-    assert.equal((await post(base, '/api/colab/start')).status, 400);
   }, { colab: none.factory });
 });
 
@@ -294,11 +293,11 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
 
 test('a line-up with an empty model saves, but cannot start', async () => {
   const { factory } = colabFor();
-  await withServer(async ({ base, userOp, store }) => {
+  await withServer(async ({ userOp, store }) => {
     const agents = [LINEUP.agents[0], { model: '', roleId: 'creative' }];
     assert.equal((await userOp({ ...LINEUP, agents })).status, 200);
     assert.equal(store.board.colab.lineup.agents[1].model, '');
-    const res = await post(base, '/api/colab/start');
+    const res = await userOp({ type: 'chat', text: '/start go' });
     assert.equal(res.status, 400);
     assert.match((await res.json()).error, /Agent 2 has no model/);
   }, { colab: factory });
@@ -315,29 +314,36 @@ test('the library round-trips and rejects duplicate role ids', async () => {
   }, { colab: factory });
 });
 
-// Task 6: runs start at once from a /start chat now; the Room rewires this route.
-test.skip('a waiting run refuses a new line-up and a second start; a user chat starts round 1', async () => {
-  const { factory, calls } = colabFor();
-  await withServer(async ({ base, userOp, colab }) => {
+test('a /start chat runs at once and refuses a new line-up and a second start meanwhile', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { factory, calls } = colabFor({ complete: async () => { await gate; return { message: { role: 'assistant', content: 'hello' }, cost: 0.1 }; } });
+  await withServer(async ({ userOp, colab, store }) => {
     await userOp(LINEUP);
-    assert.equal((await post(base, '/api/colab/start')).status, 200);
-    assert.equal((await post(base, '/api/colab/start')).status, 409);
+    const started = await userOp({ type: 'chat', text: '/start go' });
+    assert.equal(started.status, 200);
+    assert.equal((await started.json()).message.start, true);
+    const again = await userOp({ type: 'chat', text: '/start again' });
+    assert.equal(again.status, 400);
+    assert.match((await again.json()).error, /A run is already going/);
     assert.equal((await userOp(LINEUP)).status, 409);
-    assert.equal(calls.length, 0);
-    await userOp({ type: 'chat', text: 'go' });
+    assert.equal(store.board.chat.filter((m) => m.role === 'user').length, 1);
+    release();
     await colab.finished;
     assert.ok(calls.length > 0);
     assert.equal(colab.status.state, 'idle');
   }, { colab: factory });
 });
 
-test('start with an empty line-up is 400 and stop returns idle', async () => {
+test('start with no one connected is 400 and stop returns idle', async () => {
   const { factory } = colabFor();
-  await withServer(async ({ base }) => {
-    assert.equal((await post(base, '/api/colab/start')).status, 400);
+  await withServer(async ({ base, userOp }) => {
+    const res = await userOp({ type: 'chat', text: '/start go' });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /No one is connected to start a run/);
     await post(base, '/api/colab/stop');
     assert.equal((await (await fetch(`${base}/api/colab`)).json()).status.state, 'idle');
-  }, { colab: factory });
+  }, { colab: factory, agent: { via: () => 'none', found: false } });
 });
 
 test('a new event stream starts with the board and the current run status', async () => {
@@ -355,10 +361,54 @@ test('a new event stream starts with the board and the current run status', asyn
   }, { colab: factory });
 });
 
-test('start without a key does not tell the host to restart', async () => {
+test('a card without a key cannot be asked', async () => {
   const none = colabFor({ key: null });
-  await withServer(async ({ base }) => {
-    const body = await (await post(base, '/api/colab/start')).json();
-    assert.doesNotMatch(body.error, /restart/);
+  await withServer(async ({ userOp, store }) => {
+    await userOp(LINEUP);
+    const res = await userOp({ type: 'chat', text: '/chat 2 hello' });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /can't answer right now \(no OpenRouter key\)/);
+    assert.equal(store.board.chat.length, 0);
   }, { colab: none.factory });
+});
+
+test('a bad slash command returns 400 and posts nothing', () => withServer(async ({ userOp, store }) => {
+  const res = await userOp({ type: 'chat', text: '/nope' });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Unknown command/);
+  assert.equal(store.board.chat.length, 0);
+}));
+
+test('POST /api/colab/reset-spent zeroes spent', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base, store }) => {
+    store.setColabSpent(2);
+    const res = await post(base, '/api/colab/reset-spent');
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).status.spent, 0);
+    assert.equal(store.board.colab.spent, 0);
+  }, { colab: factory });
+});
+
+test('the start route is gone', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base }) => {
+    assert.equal((await post(base, '/api/colab/start')).status, 404);
+  }, { colab: factory });
+});
+
+test('--no-agent is no longer an option', () => {
+  assert.equal('agent' in parseArgs(['--no-agent']), false);
+});
+
+test('GET /api/board says how Claude is connected and /api/colab lists the connections', async () => {
+  const { factory } = colabFor();
+  await withServer(async ({ base, userOp }) => {
+    await userOp(LINEUP);
+    const board = await (await fetch(`${base}/api/board`)).json();
+    assert.equal(board.agent, 'idle');
+    assert.equal(board.claude, 'binary');
+    const { connections } = await (await fetch(`${base}/api/colab`)).json();
+    assert.deepEqual(connections.map((c) => [c.n, c.kind, c.available]), [[1, 'direct', true], [2, 'openrouter', true]]);
+  }, { colab: factory });
 });

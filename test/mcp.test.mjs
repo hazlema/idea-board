@@ -416,8 +416,8 @@ test('the tool runner acts as the author it was given, claude by default', async
   }
 });
 
-test('wait_for_chat skips messages not owed by Claude', () => withServer(async ({ call, userOp }) => {
-  await userOp({ type: 'chat', text: 'not you', owed: [] });
+test('wait_for_chat skips messages not owed by Claude', () => withServer(async ({ call, userOp, store }) => {
+  store.apply({ type: 'chat', text: 'not you', owed: [] }, 'user');
   await userOp({ type: 'chat', text: 'you', owed: ['claude'] });
   const waited = await call('wait_for_chat', { timeout_seconds: 1 });
   assert.deepEqual(waited.messages.map((m) => m.text), ['you']);
