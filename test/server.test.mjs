@@ -34,7 +34,7 @@ test('Claude edits through MCP show up for the user, attributed to Claude', () =
 }));
 
 test('user chat nudges the agent; Claude reply answers it', () => withServer(async ({ userOp, call, nudges }) => {
-  await userOp({ type: 'chat', text: 'add a mana system' });
+  await userOp({ type: 'chat', text: 'add a mana system', owed: ['claude'] });
   assert.equal(nudges.length, 1);
   assert.equal((await call('view_board', {})).unanswered_chat.length, 1);
   await call('reply', { text: 'Added.' });
@@ -44,7 +44,7 @@ test('user chat nudges the agent; Claude reply answers it', () => withServer(asy
 test('wait_for_chat long-polls until the user writes', () => withServer(async ({ call, userOp }) => {
   const waiting = call('wait_for_chat', { timeout_seconds: 5 });
   await new Promise((r) => setTimeout(r, 100));
-  await userOp({ type: 'chat', text: 'hello from the board' });
+  await userOp({ type: 'chat', text: 'hello from the board', owed: ['claude'] });
   const result = await waiting;
   assert.equal(result.messages[0].text, 'hello from the board');
   // Already delivered messages are not handed out twice.
@@ -277,7 +277,7 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
   const { factory } = colabFor();
   await withServer(async ({ base, userOp, store }) => {
     assert.equal((await userOp(LINEUP)).status, 200);
-    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30 });
+    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30, claudeRoleId: 'foreman' });
     assert.equal((await userOp({ ...LINEUP, turnLimit: 45 })).status, 200);
     assert.equal(store.board.colab.lineup.turnLimit, 45);
     assert.equal((await userOp({ type: 'setColabExtras', rules: 'be kind', roles: { creative: 'wild' } })).status, 200);

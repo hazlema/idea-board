@@ -52,22 +52,22 @@ test('invalid input is rejected with OpError', () => {
 
 test('a Claude reply marks earlier user messages as answered', () => {
   const board = emptyBoard();
-  applyOp(board, { type: 'chat', text: 'one' }, 'user');
-  applyOp(board, { type: 'chat', text: 'two' }, 'user');
-  assert.equal(board.chat.filter((m) => !m.handled).length, 2);
+  applyOp(board, { type: 'chat', text: 'one', owed: ['claude'] }, 'user');
+  applyOp(board, { type: 'chat', text: 'two', owed: ['claude'] }, 'user');
+  assert.equal(board.chat.filter((m) => m.owed?.length).length, 2);
   applyOp(board, { type: 'chat', text: 'done' }, 'claude');
-  assert.equal(board.chat.filter((m) => !m.handled).length, 0);
+  assert.equal(board.chat.filter((m) => m.owed?.length).length, 0);
 });
 
 test('a Claude reply with answers marks only those messages answered', () => {
   const board = emptyBoard();
-  const { message: one } = applyOp(board, { type: 'chat', text: 'one' }, 'user');
-  const { message: two } = applyOp(board, { type: 'chat', text: 'two' }, 'user');
+  const { message: one } = applyOp(board, { type: 'chat', text: 'one', owed: ['claude'] }, 'user');
+  const { message: two } = applyOp(board, { type: 'chat', text: 'two', owed: ['claude'] }, 'user');
   applyOp(board, { type: 'chat', text: 'done', answers: [one.id] }, 'claude');
-  assert.deepEqual(board.chat.filter((m) => !m.handled).map((m) => m.id), [two.id]);
+  assert.deepEqual(board.chat.filter((m) => m.owed?.length).map((m) => m.id), [two.id]);
   // The user cannot mark messages answered this way.
   applyOp(board, { type: 'chat', text: 'three', answers: [two.id] }, 'user');
-  assert.equal(board.chat.find((m) => m.id === two.id).handled, false);
+  assert.deepEqual(board.chat.find((m) => m.id === two.id).owed, ['claude']);
   assert.throws(() => applyOp(board, { type: 'chat', text: 'x', answers: 'all' }, 'claude'), /answers/);
 });
 
@@ -158,5 +158,59 @@ test('an AI chat message may carry turn stats; a user message may not, and junk 
 
 test('a board saved before the turn limit existed gets the 30 minute default', () => {
   const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
-  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30 });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman' });
+});
+
+test('user chat stores owed/to/start', () => {
+  const board = emptyBoard();
+  const { message } = applyOp(board, { type: 'chat', text: 'hi', owed: ['claude'], to: ['claude'], start: true }, 'user');
+  assert.deepEqual(message.owed, ['claude']);
+  assert.deepEqual(message.to, ['claude']);
+  assert.equal(message.start, true);
+  assert.equal('handled' in message, false);
+  const { message: plain } = applyOp(board, { type: 'chat', text: 'yo' }, 'user');
+  assert.deepEqual(plain.owed, []);
+  assert.equal('to' in plain, false);
+  assert.equal('start' in plain, false);
+});
+
+test('unknown ids in owed are refused', () => {
+  const board = emptyBoard();
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'hi', owed: ['agent:nobody'] }, 'user'), /unknown connection/);
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'hi', to: ['agent:nobody'] }, 'user'), /unknown connection/);
+});
+
+test('an AI answer clears only its own owed', () => {
+  const board = emptyBoard();
+  board.colab.roster.push({ id: 'agent:a=b', model: 'a', roleId: 'b', name: 'A', modelName: 'A', color: 'amber' });
+  const { message } = applyOp(board, { type: 'chat', text: 'q', owed: ['claude', 'agent:a=b'] }, 'user');
+  applyOp(board, { type: 'chat', text: 'x', answers: [message.id] }, 'claude');
+  assert.deepEqual(board.chat[0].owed, ['agent:a=b']);
+});
+
+test('migration turns handled into owed', () => {
+  const b = migrateBoard({ chat: [{ id: 'm_1', role: 'user', text: 'a', at: 'a', handled: false }, { id: 'm_2', role: 'user', text: 'b', at: 'a', handled: true }] });
+  assert.deepEqual(b.chat.map((m) => m.owed), [['claude'], []]);
+  assert.ok(b.chat.every((m) => !('handled' in m)));
+  assert.equal(b.colab.spent, 0);
+  assert.equal(b.colab.claudeName, 'Claude');
+  assert.equal(b.colab.lineup.claudeRoleId, 'foreman');
+});
+
+test('setColabLineup keeps or sets claudeRoleId', () => {
+  const board = emptyBoard();
+  const lineup = { type: 'setColabLineup', agents: [], rounds: 3, budget: 2 };
+  assert.equal(applyOp(board, lineup, 'user').lineup.claudeRoleId, 'foreman');
+  assert.equal(applyOp(board, { ...lineup, claudeRoleId: 'qa' }, 'user').lineup.claudeRoleId, 'qa');
+  assert.equal(applyOp(board, lineup, 'user').lineup.claudeRoleId, 'qa');
+  assert.throws(() => applyOp(board, { ...lineup, claudeRoleId: '' }, 'user'), OpError);
+});
+
+test('resetColabSpent and setClaudeName', () => {
+  const board = emptyBoard();
+  board.colab.spent = 3;
+  applyOp(board, { type: 'resetColabSpent' }, 'user');
+  applyOp(board, { type: 'setClaudeName', name: 'Opus' }, 'user');
+  assert.equal(board.colab.spent, 0);
+  assert.equal(board.colab.claudeName, 'Opus');
 });

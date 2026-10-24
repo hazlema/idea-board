@@ -37,20 +37,20 @@ test('a message sent while Claude is working is answered by a second run', async
       });
     });
 
-    store.apply({ type: 'chat', text: 'first question' }, 'user');
+    store.apply({ type: 'chat', text: 'first question', owed: ['claude'] }, 'user');
     agent.nudge();
     assert.equal(agent.running, true);
-    store.apply({ type: 'chat', text: 'second question' }, 'user');
+    store.apply({ type: 'chat', text: 'second question', owed: ['claude'] }, 'user');
     agent.nudge();
 
     const chat = await afterFirstReply;
-    assert.deepEqual(chat.map((m) => [m.role, m.handled]), [['user', true], ['user', false], ['claude', true]]);
+    assert.deepEqual(chat.map((m) => [m.role, m.owed?.length ?? 0]), [['user', 0], ['user', 1], ['claude', 0]]);
     assert.equal(chat[2].text, 'answered: first question');
 
     await idleTwice;
     const final = store.board.chat;
     assert.equal(final.at(-1).text, 'answered: second question');
-    assert.ok(final.filter((m) => m.role === 'user').every((m) => m.handled));
+    assert.ok(final.filter((m) => m.role === 'user').every((m) => m.owed.length === 0));
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

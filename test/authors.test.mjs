@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { agentId, authorName, isAi } from '../lib/authors.mjs';
+import { agentId, authorName, cardIds, isAi } from '../lib/authors.mjs';
 import { emptyBoard, migrateBoard } from '../lib/board.mjs';
 import { renderDesignDoc } from '../lib/export.mjs';
 import { BoardStore } from '../lib/store.mjs';
@@ -31,7 +31,7 @@ test('agentId joins model and role', () => {
 });
 
 test('empty and migrated boards carry an empty colab', () => {
-  const colab = { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30 }, extras: { rules: '', roles: {} }, run: null };
+  const colab = { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30, claudeRoleId: 'foreman' }, extras: { rules: '', roles: {} }, run: null, spent: 0, claudeName: 'Claude' };
   assert.deepEqual(migrateBoard({}).colab, colab);
   assert.deepEqual(emptyBoard().colab, colab);
   assert.deepEqual(migrateBoard({ colab: { roster: [ENTRY] } }).colab, { ...colab, roster: [ENTRY] });
@@ -49,15 +49,14 @@ test('an agent in the roster authors changes as an AI', () => {
   cleanup();
 });
 
-test('an agent chat marks user messages handled and ends the turn', () => {
+test('an agent chat clears what it owed and ends the turn', () => {
   const { store, cleanup } = agentStore();
-  store.apply({ type: 'chat', text: 'hello' }, 'user');
+  store.apply({ type: 'chat', text: 'hello', owed: [ID] }, 'user');
   store.apply(group('A'), ID);
   store.apply(group('B'), ID);
   store.apply({ type: 'chat', text: 'done' }, ID);
   store.apply(group('C'), ID);
-  assert.ok(store.board.chat.filter((m) => m.role === 'user').every((m) => m.handled));
-  assert.equal(store.board.chat.at(-1).handled, true);
+  assert.ok(store.board.chat.filter((m) => m.role === 'user').every((m) => m.owed.length === 0));
   const [a, b, c] = store.historyLog.entries().filter((e) => e.turn);
   assert.equal(a.turn, b.turn);
   assert.notEqual(b.turn, c.turn);
@@ -78,4 +77,16 @@ test('the design doc names an agent that ruled something out', () => {
   board.colab.roster.push(ENTRY);
   board.ruledOut.push({ id: 'r1', text: 'Idea', reason: 'no', by: ID, at: '2026-10-22T00:00:00Z' });
   assert.match(renderDesignDoc(board, { assetsDirName: 'a', date: '2026-10-22' }), /Y · QA, 2026-10-22/);
+});
+
+test('cardIds suffixes duplicates', () => {
+  const cards = [{ model: 'm', roleId: 'r' }, { model: 'm', roleId: 'r' }, { model: 'n', roleId: 'r' }];
+  assert.deepEqual(cardIds(cards), ['agent:m=r', 'agent:m=r#2', 'agent:n=r']);
+});
+
+test('authorName shows the board\'s name for Claude', () => {
+  const board = emptyBoard();
+  assert.equal(authorName(board, 'claude'), 'Claude');
+  board.colab.claudeName = 'Opus';
+  assert.equal(authorName(board, 'claude'), 'Opus');
 });

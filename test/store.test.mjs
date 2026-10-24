@@ -76,3 +76,36 @@ test('a v1 board file on disk loads, and saves back as v2', () => {
   assert.equal('nodes' in saved, false);
   fs.rmSync(dir, { recursive: true });
 });
+
+test('each AI author gets its own undo turn', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  store.board.colab.roster.push({ id: 'agent:a=b', model: 'a', roleId: 'b', name: 'A', modelName: 'A', color: 'amber' });
+  const note = (text) => ({ type: 'addObject', kind: 'note', text, x: 0, y: 0 });
+  const notes = () => store.board.brainstorm.pages[0].objects.filter((o) => o.kind === 'note');
+  store.apply(note('one'), 'claude');
+  store.apply(note('two'), 'agent:a=b');
+  store.apply(note('three'), 'claude');
+  store.apply(note('four'), 'agent:a=b');
+  const turns = store.historyLog.entries().map((e) => e.turn);
+  assert.equal(turns[0], turns[2]);
+  assert.equal(turns[1], turns[3]);
+  assert.notEqual(turns[0], turns[1]);
+  store.undoTurn(turns[0]);
+  assert.deepEqual(notes().map((n) => n.text), ['two', 'four']);
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('addColabSpend and setColabSpent save without history', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'board.json');
+  const store = new BoardStore(file);
+  store.addColabSpend(0.5);
+  store.addColabSpend(0.25);
+  assert.equal(store.board.colab.spent, 0.75);
+  store.setColabSpent(2);
+  assert.equal(new BoardStore(file).board.colab.spent, 2);
+  assert.equal(store.historyLog.entries().length, 0);
+  fs.rmSync(dir, { recursive: true });
+});

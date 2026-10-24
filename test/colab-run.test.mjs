@@ -71,7 +71,7 @@ test('agents take turns in order, author their notes and the run ends idle', asy
   assert.equal(run.status.state, 'idle');
   assert.equal(store.board.colab.run, null);
   assert.ok(events.includes('running'));
-  assert.equal(store.board.chat.filter((m) => m.role === 'user' && !m.handled).length, 0);
+  assert.equal(store.board.chat.filter((m) => m.role === 'user' && m.owed.length).length, 0);
 });
 
 test('bad tool arguments and unknown tools become Error results; the turn completes', async () => {
@@ -259,12 +259,12 @@ test('display names prefer the OpenRouter name without its provider prefix', asy
   assert.equal(off.store.board.colab.roster[0].modelName, 'Alpha One');
 });
 
-test('run notes answer nothing, so earlier host messages stay unhandled', () => {
+test('run notes answer nothing, so earlier host messages stay owed', () => {
   const { store, run } = setup({ complete: () => text('x') });
-  const m = hostSays(store, 'hello').message;
+  const m = store.apply({ type: 'chat', text: 'hello', owed: ['claude'] }, 'user').message;
   store.setColabRun({ round: 1, spent: 0 });
   run.recoverAfterRestart();
-  assert.equal(store.board.chat.find((c) => c.id === m.id).handled, false);
+  assert.deepEqual(store.board.chat.find((c) => c.id === m.id).owed, ['claude']);
 });
 
 test('a reply over 20 000 characters is posted cut, not lost', async () => {

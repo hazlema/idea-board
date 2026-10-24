@@ -122,7 +122,7 @@ test('view_picture prefers the preview and refuses files over 3.75 MB', () => wi
 test('pointing context reaches wait_for_chat and the agent prompt', () => withServer(async ({ call, userOp, store }) => {
   const group = await call('add_group', { title: 'Wizards' });
   const context = [{ kind: 'object', id: group.id, label: 'Wizards' }];
-  await userOp({ type: 'chat', text: 'what about this?', context });
+  await userOp({ type: 'chat', text: 'what about this?', context, owed: ['claude'] });
   const waited = await call('wait_for_chat', { timeout_seconds: 1 });
   assert.deepEqual(waited.messages[0].pointing_at, context);
   const view = await call('view_board', {});

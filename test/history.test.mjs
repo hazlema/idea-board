@@ -306,10 +306,10 @@ test('ops with no content change record nothing; a Claude reply starts a new tur
   store.apply({ type: 'chat', text: 'hello' }, 'user');
   store.apply({ type: 'tidy' }, 'user');
   assert.deepEqual(store.history().entries, []);
-  const turn = store.claudeTurn;
+  const turn = store.turnOf('claude');
   store.apply({ type: 'chat', text: 'reply' }, 'claude');
-  assert.notEqual(store.claudeTurn, turn);
-  assert.match(store.claudeTurn, /^t_[0-9a-f]{8}$/);
+  assert.notEqual(store.turnOf('claude'), turn);
+  assert.match(store.turnOf('claude'), /^t_[0-9a-f]{8}$/);
   assert.throws(() => store.apply({ type: 'deleteNode', id: 'missing' }, 'user'));
   assert.deepEqual(store.history().entries, []);
 }));
