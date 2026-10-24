@@ -24,6 +24,10 @@ const NOT_BUILT = 'Idea board is not built yet. Run: npm install && npm run buil
 const ASSET_TYPES = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
+const USAGE = 'Usage: idea-board [board-file] [--port 4777] [--no-open]\n\nboard-file defaults to ./idea-board.json';
+const REMOVED = { '--no-agent': '--no-agent was removed: the server always tries the claude binary; set IDEA_BOARD_CLAUDE=/nonexistent to run without it.' };
+
+// The command line as options; `error` is set for an option it does not know.
 export function parseArgs(argv) {
   const options = { file: 'idea-board.json', port: Number(process.env.IDEA_BOARD_PORT) || 4777, open: true };
   for (let i = 0; i < argv.length; i += 1) {
@@ -31,6 +35,7 @@ export function parseArgs(argv) {
     if (arg === '--port') options.port = Number(argv[++i]);
     else if (arg === '--no-open') options.open = false;
     else if (arg === '--help' || arg === '-h') options.help = true;
+    else if (arg.startsWith('--')) options.error ??= REMOVED[arg] ?? `unknown option ${arg}`;
     else options.file = arg;
   }
   return options;
@@ -268,6 +273,29 @@ export function createServer({ store, agent, presence, colab, room, port, distDi
   });
 }
 
+// Claude (connection 1), the agents' run and the chat room, wired together and
+// recovered after a restart. `agent` holds options for the Agent.
+export function connect({ store, presence, library, openrouter, agent: agentOptions }) {
+  // The run reads Claude's state through the agent, which is made first (it needs the run to stay quiet during one).
+  let colab = null;
+  const agent = new Agent(store, presence, { ...agentOptions, quiet: () => colab.status.state !== 'idle' });
+  colab = new ColabRun({ store, presence, claude: agent, library, openrouter });
+  const room = new Room({ store, agent, presence, colab, library });
+  // When a run ends, a user message the background agent held back is answered. Only the
+  // run's own change to idle counts: a status re-sent while idle (the agent's work, a
+  // session attaching) must not run the binary again for a message it failed on.
+  let state = colab.status.state;
+  store.subscribe((event) => {
+    if (event.type !== 'colab') return;
+    const ended = state !== 'idle' && event.status.state === 'idle';
+    state = event.status.state;
+    if (ended) agent.nudge();
+  });
+  // Messages owed from before the restart are answered with the next user message.
+  room.recover();
+  return { agent, colab, room };
+}
+
 /** The command that opens `url` in the default browser on `platform` (a process.platform value). */
 export function browserCommand(platform, url) {
   if (platform === 'darwin') return { command: 'open', args: [url] };
@@ -290,8 +318,12 @@ function openBrowser(url) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.error) {
+    console.error(`${options.error}\n\n${USAGE}`);
+    process.exit(1);
+  }
   if (options.help) {
-    console.log('Usage: idea-board [board-file] [--port 4777] [--no-open]\n\nboard-file defaults to ./idea-board.json');
+    console.log(USAGE);
     return;
   }
   const store = new BoardStore(options.file);
@@ -299,14 +331,7 @@ function main() {
   const mcpUrl = `http://${HOST}:${options.port}/mcp`;
   const library = new Library(libraryFile());
   const openrouter = new OpenRouter({ key: () => readKey() });
-  // The run reads Claude's state through the agent, which is made next (it needs the run to stay quiet during one).
-  let colab = null;
-  const agent = new Agent(store, presence, { mcpUrl, cwd: path.dirname(store.file), quiet: () => colab.status.state !== 'idle' });
-  colab = new ColabRun({ store, presence, claude: agent, library, openrouter });
-  const room = new Room({ store, agent, presence, colab, library });
-  // When a run ends, a user message the background agent held back is answered.
-  store.subscribe((event) => { if (event.type === 'colab' && event.status.state === 'idle') agent.nudge(); });
-  room.recover();
+  const { agent, colab, room } = connect({ store, presence, library, openrouter, agent: { mcpUrl, cwd: path.dirname(store.file) } });
   // Model display names for new roster entries; until it resolves they are id-based.
   void colab.prepare();
   const server = createServer({ store, agent, presence, colab, room, port: options.port });

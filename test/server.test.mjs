@@ -400,8 +400,13 @@ test('the start route is gone', async () => {
   }, { colab: factory });
 });
 
-test('--no-agent is no longer an option', () => {
-  assert.equal('agent' in parseArgs(['--no-agent']), false);
+test('an unknown flag is an error, not the board file', () => {
+  const removed = parseArgs(['my.json', '--no-agent']);
+  assert.equal(removed.file, 'my.json');
+  assert.match(removed.error, /--no-agent was removed: the server always tries the claude binary; set IDEA_BOARD_CLAUDE=\/nonexistent to run without it\./);
+  assert.equal('agent' in removed, false);
+  assert.match(parseArgs(['--bogus']).error, /unknown option --bogus/);
+  assert.equal(parseArgs(['my.json', '--no-open', '--port', '5000']).error, undefined);
 });
 
 test('GET /api/board says how Claude is connected and /api/colab lists the connections', async () => {

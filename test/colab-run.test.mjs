@@ -486,6 +486,30 @@ test('an MCP Claude turn that times out says so', async () => {
   assert.match(first.text, /^\(out of time after/);
 });
 
+test('an MCP Claude turn whose session has gone runs through the binary with the time left', async () => {
+  const limits = [];
+  const claude = { via: () => 'mcp', found: true, takeTurn: async (prompt, { timeoutMs }) => { limits.push(timeoutMs); return { ok: true, text: 'binary turn' }; } };
+  const present = { attached: () => true, offerTurn: async () => { await new Promise((r) => setTimeout(r, 100)); return 'detached'; } };
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, presence: present, turnLimit: 5000, complete: () => text('card turn') });
+  kickoff(store, run);
+  await run.finished;
+  const [first] = chatPosts(store);
+  assert.equal(first.role, 'claude');
+  assert.equal(first.text, 'binary turn');
+  assert.equal(limits.length, 1);
+  assert.ok(limits[0] <= 4950 && limits[0] > 4000, `time left ${limits[0]}`);
+});
+
+test('an MCP Claude turn whose session has gone, with no binary, posts (not connected)', async () => {
+  const claude = { via: () => 'mcp', found: false, takeTurn: async () => { throw new Error('not the binary'); } };
+  const present = { attached: () => true, offerTurn: async () => 'detached' };
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, presence: present, complete: () => text('card turn') });
+  kickoff(store, run);
+  await run.finished;
+  const posts = chatPosts(store);
+  assert.deepEqual(posts.map((m) => [m.role, m.text]), [['claude', '(not connected)'], [ID_A, 'card turn']]);
+});
+
 test("a /chat to a card during a run reaches only that card's next turn as addressed", async () => {
   let store;
   const made = setup({

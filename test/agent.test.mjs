@@ -175,7 +175,7 @@ test('takeTurn honors timeoutMs, retry included', async () => {
     const started = Date.now();
     const result = await agent.takeTurn('x', { timeoutMs: 300 });
     assert.equal(result.ok, false);
-    assert.ok(Date.now() - started < 1500);
+    assert.ok(Date.now() - started < 700);
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });
@@ -211,6 +211,65 @@ test('a turn waits for a run in flight', async () => {
     assert.equal(result.text, 'answered: t');
     assert.ok(Date.now() - started >= 250);
     assert.equal(store.board.chat.at(-1).text, 'answered: q');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+// Answers after 2 s: a plain answer still going when a run turn comes.
+const ANSWERING_CLAUDE = `#!/usr/bin/env node
+const prompt = process.argv[process.argv.indexOf('-p') + 1];
+setTimeout(() => process.stdout.write(JSON.stringify({ result: 'answered: ' + prompt, session_id: 's_1' })), 2000);
+`;
+
+test('Stop ends a turn still waiting for an answer in flight, and the answer goes on', async () => {
+  const { dir, store, agent, idle } = setup(ANSWERING_CLAUDE);
+  try {
+    store.apply({ type: 'chat', text: 'q', owed: ['claude'] }, 'user');
+    const answered = idle();
+    agent.nudge();
+    const ctl = new AbortController();
+    setTimeout(() => ctl.abort(), 50);
+    const started = Date.now();
+    const result = await agent.takeTurn('t', { timeoutMs: 10_000, signal: ctl.signal });
+    assert.deepEqual(result, { ok: false, error: 'stopped' });
+    assert.ok(Date.now() - started < 200, `took ${Date.now() - started} ms`);
+    await answered;
+    assert.equal(store.board.chat.at(-1).text, 'answered: q');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('the turn limit counts the wait for an answer in flight', async () => {
+  const { dir, store, agent, idle } = setup(ANSWERING_CLAUDE);
+  try {
+    store.apply({ type: 'chat', text: 'q', owed: ['claude'] }, 'user');
+    const answered = idle();
+    agent.nudge();
+    const started = Date.now();
+    const result = await agent.takeTurn('t', { timeoutMs: 300 });
+    assert.deepEqual(result, { ok: false, error: 'out of time' });
+    assert.ok(Date.now() - started < 500, `took ${Date.now() - started} ms`);
+    await answered;
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('two turns at once run one after the other', async () => {
+  const { dir, store, agent } = setup(FAKE_CLAUDE);
+  try {
+    const order = [];
+    const first = agent.takeTurn('one', { timeoutMs: 5000 }).then((r) => { order.push(r.text); return r; });
+    const second = agent.takeTurn('two', { timeoutMs: 5000 }).then((r) => { order.push(r.text); return r; });
+    const results = await Promise.all([first, second]);
+    assert.ok(results.every((r) => r.ok));
+    assert.deepEqual(order, ['answered: one', 'answered: two']);
+    assert.equal(agent.running, false);
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

@@ -469,6 +469,17 @@ test('an aborted turn resolves false and a second offer is rejected while one is
   assert.equal(await offer, false);
 }));
 
+test('a turn offered to a session that has gone is settled as detached', () => withServer(async ({ presence }) => {
+  // The session's last wait has returned; it is inside its grace period, then gone.
+  await presence.waitForChat(10);
+  assert.equal(presence.attached(), true);
+  const offer = presence.offerTurn('x', { timeoutMs: 5000 });
+  const started = Date.now();
+  assert.equal(await offer, 'detached');
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(presence.turn, null);
+}, { graceMs: 50 }));
+
 test('your_role appears when set', () => withServer(async ({ call, presence }) => {
   presence.role = () => 'Foreman job';
   const waited = await call('wait_for_chat', { timeout_seconds: 1 });
