@@ -27,9 +27,14 @@
     }
   }
 
-  const patchRole = (fields: { name?: string; job?: string }) => (library: typeof colabState.library) => ({
+  const patchRole = (fields: { name?: string; job?: string; pictures?: true | undefined }) => (library: typeof colabState.library) => ({
     ...library,
-    roles: library.roles.map((r) => (r.id === roleId ? { ...r, ...fields } : r)),
+    roles: library.roles.map((r) => {
+      if (r.id !== roleId) return r;
+      const next = { ...r, ...fields };
+      if (!next.pictures) delete next.pictures;
+      return next;
+    }),
   });
 
   // The server replaces the whole extras object, so every save sends all of it.
@@ -68,6 +73,10 @@
     <label class="flex flex-col gap-1 text-muted"
       >Job, every board
       <textarea rows="8" class={field} {...job.attrs}></textarea>
+    </label>
+    <label class="flex items-center gap-2 text-muted">
+      <input type="checkbox" checked={role.pictures === true} onchange={(e) => saveLibrary(patchRole({ pictures: e.currentTarget.checked ? true : undefined }))} />
+      Can make pictures
     </label>
   {:else if roleId === null}
     <label class="flex flex-col gap-1 text-muted"

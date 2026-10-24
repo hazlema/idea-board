@@ -5,6 +5,7 @@
   import { live } from '$lib/live.svelte';
   import type { Author, LineupAgent } from '$lib/types';
   import { colabState } from './colab.svelte';
+  import ClaudeModelPopup from './ClaudeModelPopup.svelte';
   import AddAgentDialog from './AddAgentDialog.svelte';
   import ModelPicker from './ModelPicker.svelte';
   import RoleEditor from './RoleEditor.svelte';
@@ -18,6 +19,10 @@
   let budget = $state(5);
   let turnLimit = $state(30);
   let claudeRoleId = $state('foreman');
+  let imageModel = $state('');
+  let claudeModel = $state('sonnet');
+  let claudePopup = $state(false);
+  let claudeButton = $state<HTMLButtonElement>();
   let editingRoles = $state(false);
   let adding = $state(false);
   let dragFrom = $state<number | null>(null);
@@ -31,6 +36,8 @@
       budget = lineup.budget;
       turnLimit = lineup.turnLimit ?? 30;
       claudeRoleId = lineup.claudeRoleId ?? 'foreman';
+      imageModel = lineup.imageModel ?? '';
+      claudeModel = lineup.claudeModel ?? 'sonnet';
     });
   });
 
@@ -52,6 +59,20 @@
   const spent = $derived(status?.spent ?? live.board?.colab?.spent ?? 0);
   const mcpCommand = $derived(`claude mcp add --transport http idea-board ${location.origin}/mcp`);
 
+  const MODEL_LABELS: Record<string, string> = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku', fable: 'Fable' };
+  const claudeLabel = $derived(MODEL_LABELS[claudeModel] ?? claudeModel);
+
+  function closeClaudePopup(): void {
+    claudePopup = false;
+    claudeButton?.focus();
+  }
+
+  function saveClaudeModel(model: string): void {
+    claudeModel = model;
+    send();
+    closeClaudePopup();
+  }
+
   function activityOf(i: number): { text: string; thinking: boolean; over: boolean } {
     const c = status?.connections?.[ids[i]];
     if (c?.state === 'over-budget') return { text: 'Over budget', thinking: false, over: true };
@@ -63,7 +84,7 @@
   const money = (n: number): string => (Number.isInteger(n) ? String(n) : n > 0 && n < 0.1 ? n.toFixed(3) : n.toFixed(2));
 
   function send(): void {
-    void live.send({ type: 'setColabLineup', agents, rounds, budget, turnLimit, claudeRoleId });
+    void live.send({ type: 'setColabLineup', agents, rounds, budget, turnLimit, claudeRoleId, imageModel, claudeModel });
   }
 
   function edit(index: number, patch: Partial<LineupAgent>): void {
@@ -109,10 +130,22 @@
 
 <aside class="flex w-65 shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-panel p-3 text-sm" aria-label="Connections">
   <h2 class="text-xs font-semibold tracking-wide text-muted uppercase">Direct connection</h2>
-  <div class="rounded-md border border-line bg-raised p-2">
+  <div class="relative rounded-md border border-line bg-raised p-2">
     <p class="font-semibold text-text">
-      1. <span style:color="var(--color-claude)">Claude</span> <span class="font-normal text-muted">{claudeVia}</span>
+      <button
+        type="button"
+        class="text-left font-semibold hover:underline disabled:no-underline disabled:opacity-60"
+        aria-haspopup="true"
+        aria-expanded={claudePopup}
+        disabled={!canEdit}
+        bind:this={claudeButton}
+        onclick={() => (claudePopup = !claudePopup)}>1. <span style:color="var(--color-claude)">Claude · {claudeLabel}</span></button
+      >
+      <span class="font-normal text-muted">{claudeVia}</span>
     </p>
+    {#if claudePopup && canEdit}
+      <ClaudeModelPopup value={claudeModel} mcp={status?.claude === 'mcp'} onsave={saveClaudeModel} onclose={closeClaudePopup} />
+    {/if}
     <label class="mt-1 flex items-center gap-2 text-muted"
       >Role:
       <select
@@ -275,6 +308,21 @@
       }}
     />
   </label>
+
+  <div class="flex flex-col gap-0.5 text-muted">
+    <span>Image model</span>
+    <ModelPicker
+      value={imageModel}
+      models={colabState.imageModels}
+      disabled={!canEdit}
+      ariaLabel="Image model"
+      onchange={(id) => {
+        imageModel = id;
+        send();
+      }}
+    />
+    <span class="text-xs">Used by roles that can make pictures.</span>
+  </div>
 
   <p class="flex items-baseline justify-between gap-2 text-muted" aria-live="polite">
     <span>Spent ${money(spent)} of ${money(status?.budget ?? budget)}</span>

@@ -8,10 +8,13 @@ class ColabState {
   library = $state<{ rules: string; roles: Role[] }>({ rules: '', roles: [] });
   /** The models agents can use, or null until loaded (or when loading failed). */
   models = $state<Model[] | null>(null);
+  /** The models that make pictures; null until loaded (or when loading failed). */
+  imageModels = $state<Model[] | null>(null);
   modelsError = $state<string | null>(null);
   hasKey = $state(false);
   loaded = $state(false);
   #loadingModels = false;
+  #loadingImageModels = false;
 
   async load(): Promise<void> {
     try {
@@ -23,6 +26,10 @@ class ColabState {
     } catch (error) {
       live.toast(error instanceof Error ? error.message : 'Could not load the agents');
     }
+    await Promise.all([this.#loadModels(), this.#loadImageModels()]);
+  }
+
+  async #loadModels(): Promise<void> {
     if (this.models || this.#loadingModels) return;
     this.#loadingModels = true;
     try {
@@ -32,6 +39,19 @@ class ColabState {
       this.modelsError = error instanceof Error ? error.message : 'Unknown error';
     } finally {
       this.#loadingModels = false;
+    }
+  }
+
+  async #loadImageModels(): Promise<void> {
+    if (this.imageModels || this.#loadingImageModels) return;
+    this.#loadingImageModels = true;
+    try {
+      this.imageModels = await api.colabImageModels();
+    } catch {
+      // The picker still takes a typed id; the model list's error already tells the user.
+      this.imageModels = null;
+    } finally {
+      this.#loadingImageModels = false;
     }
   }
 }

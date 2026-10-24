@@ -5,9 +5,10 @@
     value: string;
     models: Model[] | null;
     disabled?: boolean;
+    ariaLabel?: string;
     onchange: (id: string) => void;
   }
-  let { value, models, disabled = false, onchange }: Props = $props();
+  let { value, models, disabled = false, ariaLabel = 'Model', onchange }: Props = $props();
 
   let open = $state(false);
   let query = $state<string | null>(null);
@@ -77,7 +78,7 @@
     type="text"
     class="w-full rounded-md border border-line bg-ink px-2 py-1 text-text disabled:opacity-60"
     placeholder="Model (type to search)"
-    aria-label="Model"
+    aria-label={ariaLabel}
     {disabled}
     value={shown}
     onfocus={() => {

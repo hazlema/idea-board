@@ -7,6 +7,7 @@ vi.mock('$lib/api', () => ({
   op: vi.fn().mockResolvedValue({}),
   colab: vi.fn(),
   colabModels: vi.fn(),
+  colabImageModels: vi.fn(),
   resetSpent: vi.fn(),
 }));
 
@@ -38,6 +39,7 @@ const models: Model[] = [
     context: 1000,
   },
 ];
+const imageModels: Model[] = [{ id: 'google/imagen-9', name: 'Imagen 9', promptPrice: 1, completionPrice: 2, context: 1000 }];
 const idle: RunStatus = {
   state: 'idle',
   round: 0,
@@ -63,6 +65,8 @@ beforeEach(() => {
     connections: [],
   });
   vi.mocked(api.colabModels).mockResolvedValue(models);
+  vi.mocked(api.colabImageModels).mockResolvedValue(imageModels);
+  colabState.imageModels = null;
 });
 
 const lastLineup = () => vi.mocked(api.op).mock.calls.at(-1)?.[0];
@@ -80,6 +84,8 @@ function withCards(count: number): void {
     budget: 5,
     turnLimit: 30,
     claudeRoleId: 'creative',
+    imageModel: '',
+    claudeModel: 'sonnet',
   };
   live.board = board;
 }
@@ -106,6 +112,8 @@ test('+ Add connection opens a dialog: search, pick a model and a role, Add puts
     budget: 5,
     turnLimit: 30,
     claudeRoleId: 'creative',
+    imageModel: '',
+    claudeModel: 'sonnet',
   });
 });
 
@@ -154,6 +162,8 @@ test('choosing models and roles on the cards sends the line-up in order', async 
     budget: 5,
     turnLimit: 30,
     claudeRoleId: 'creative',
+    imageModel: '',
+    claudeModel: 'sonnet',
   });
 });
 
@@ -293,7 +303,7 @@ test('a card keeps room for the price line before a model is chosen, so choosing
   withCards(1);
   render(ConnectionsPanel);
   await waitFor(() => expect(colabState.models).not.toBeNull());
-  expect(screen.getByTestId('model-price')).toBeInTheDocument();
+  expect(screen.getAllByTestId('model-price')[0]).toBeInTheDocument();
 });
 
 test('a card shows its activity, in its colour, and the current card is marked', async () => {
@@ -360,7 +370,7 @@ test('a card with nothing to do says Waiting', () => {
 
 test('shows Claude as connection 1 via binary with Waiting', () => {
   render(ConnectionsPanel);
-  expect(screen.getByText('Claude').parentElement).toHaveTextContent('1. Claude (via binary)');
+  expect(screen.getByRole('button', { name: '1. Claude · Sonnet' }).parentElement).toHaveTextContent('1. Claude · Sonnet (via binary)');
   expect(screen.getByText('(via binary)')).toBeInTheDocument();
   expect(screen.getByText('Waiting')).toBeInTheDocument();
   expect(screen.getByText('None yet.')).toBeInTheDocument();
@@ -454,4 +464,76 @@ test("a line-up with no Claude role falls back to the Foreman, as the server doe
   render(ConnectionsPanel);
   await waitFor(() => expect(colabState.library.roles.some((r) => r.id === 'foreman')).toBe(true));
   expect(screen.getByRole('combobox', { name: 'Claude role' })).toHaveValue('foreman');
+});
+
+function withClaudeModel(claudeModel: string): void {
+  const board = emptyBoard();
+  board.colab.lineup.claudeModel = claudeModel;
+  live.board = board;
+}
+
+test("Claude's card shows its model and opens the popup", async () => {
+  withClaudeModel('opus');
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  const button = screen.getByRole('button', { name: '1. Claude · Opus' });
+  await fireEvent.click(button);
+  expect(screen.getByRole('radio', { name: 'Opus' })).toBeChecked();
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'Opus' })).toHaveFocus());
+  await fireEvent.click(screen.getByRole('radio', { name: 'Haiku' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', claudeModel: 'haiku' }));
+  expect(screen.queryByRole('group', { name: "Claude's model" })).toBeNull();
+  expect(button).toHaveFocus();
+});
+
+test('Cancel and Escape close the popup without saving; it is disabled during a run', async () => {
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  await fireEvent.click(screen.getByRole('button', { name: '1. Claude · Sonnet' }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('group', { name: "Claude's model" })).toBeNull();
+  await fireEvent.click(screen.getByRole('button', { name: '1. Claude · Sonnet' }));
+  await fireEvent.keyDown(screen.getByRole('radio', { name: 'Sonnet' }), { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: "Claude's model" })).toBeNull();
+  expect(api.op).not.toHaveBeenCalled();
+  live.colab = { ...idle, state: 'running' };
+  await waitFor(() => expect(screen.getByRole('button', { name: '1. Claude · Sonnet' })).toBeDisabled());
+});
+
+test('Other… saves a custom id, and a custom id shows as the label', async () => {
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  await fireEvent.click(screen.getByRole('button', { name: '1. Claude · Sonnet' }));
+  await fireEvent.click(screen.getByRole('radio', { name: 'Other…' }));
+  await fireEvent.input(screen.getByRole('textbox', { name: 'Model id' }), { target: { value: 'claude-opus-5-5' } });
+  await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', claudeModel: 'claude-opus-5-5' }));
+  expect(screen.getByRole('button', { name: '1. Claude · claude-opus-5-5' })).toBeInTheDocument();
+});
+
+test('a custom id prefills the Other… box', async () => {
+  withClaudeModel('claude-opus-5-5');
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  await fireEvent.click(screen.getByRole('button', { name: '1. Claude · claude-opus-5-5' }));
+  expect(screen.getByRole('textbox', { name: 'Model id' })).toHaveValue('claude-opus-5-5');
+});
+
+test('the popup notes MCP', async () => {
+  live.colab = { ...idle, claude: 'mcp' };
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  live.colab = { ...idle, claude: 'mcp' };
+  await fireEvent.click(screen.getByRole('button', { name: /^1\. Claude/ }));
+  expect(screen.getByText('Set by your session while connected via MCP.')).toBeInTheDocument();
+});
+
+test('Image model saves', async () => {
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.imageModels).not.toBeNull());
+  expect(screen.getByText('Used by roles that can make pictures.')).toBeInTheDocument();
+  await fireEvent.focus(screen.getByLabelText('Image model'));
+  await fireEvent.click(await screen.findByRole('button', { name: /Imagen 9/ }));
+  expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', imageModel: 'google/imagen-9' }));
 });

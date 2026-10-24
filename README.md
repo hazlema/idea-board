@@ -88,14 +88,17 @@ Thinking…, or the tool it is using). You talk to all of them in the chat.
   moved. The label says how it is connected: **via binary** (the `claude`
   command, found at startup or at `IDEA_BOARD_CLAUDE`), **via MCP** (a Claude
   Code session that is listening, see below) or **not connected**. Claude has a
-  role picker like the others.
+  role picker like the others. The name reads **1. Claude · Sonnet**; click it
+  to pick the model: Sonnet, Opus, Haiku, Fable, or **Other…** with a full model
+  id such as `claude-opus-5-5`. It can't change during a run. While Claude is
+  connected via MCP, your own session decides which model answers.
 - **OpenRouter connections:** connections 2, 3 and so on. **+ Add connection**
   adds a card. Pick the model from a searchable list (only models that support
   tools, with the price per million tokens) and a role. Drag the grip to
   reorder (the order is the turn order); **✕** removes a card. Numbers are the
   positions in the sidebar when you send a message.
 - The sidebar footer holds **Rounds**, **Budget ($)**, **Turn timeout (min)**,
-  **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
+  **Image model**, **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
 - The card whose turn it is lights up, and during a run the chat header reads
   "Round 2 of 5 · <model>'s turn" with a **Stop** button.
 
@@ -131,6 +134,13 @@ rules every connection follows. Each has text for every board (saved in
 `~/.config/idea-board/colab.json` on Linux, the platform's config folder
 elsewhere) and **Extra for this board** (saved in the board file). Edits
 apply from the next answer.
+
+**Pictures.** A role has a **Can make pictures** checkbox in the role editor
+(for example a "Concept Art" role). Connections with such a role get a
+`generate_image` tool that draws with the **Image model** from the sidebar
+footer. It is limited to 2 pictures per turn, and each one is paid from the
+run's budget. OpenRouter agents whose model can
+see images look at the board's pictures too.
 
 **The key.** OpenRouter connections need an OpenRouter key, from `OPENROUTER_API_KEY` or the
 file `~/.config/openrouter/key`. It stays on the server and is never sent to
@@ -252,7 +262,7 @@ go to your OpenRouter connections.
 
 Settings (environment variables and flags):
 
-- `IDEA_BOARD_MODEL`: model for the background Claude (default: your Claude Code default)
+- `IDEA_BOARD_MODEL`: the starting Claude model of a new board (default: your Claude Code default); after that, pick it on Claude's card
 - `IDEA_BOARD_CLAUDE`: path to the `claude` binary
 - `IDEA_BOARD_PORT`: default port (otherwise 4777)
 

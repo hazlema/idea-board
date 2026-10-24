@@ -79,6 +79,10 @@ export async function colabModels(): Promise<Model[]> {
   return (await request<{ models: Model[] }>('/api/colab/models')).models;
 }
 
+export async function colabImageModels(): Promise<Model[]> {
+  return (await request<{ models: Model[] }>('/api/colab/image-models')).models;
+}
+
 export async function saveLibrary(library: { rules: string; roles: Role[] }): Promise<{ rules: string; roles: Role[] }> {
   const res = await request<{ library: { rules: string; roles: Role[] } }>('/api/colab/library', {
     method: 'PUT',

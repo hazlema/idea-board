@@ -7,6 +7,7 @@ vi.mock('$lib/api', () => ({
   op: vi.fn().mockResolvedValue({}),
   colab: vi.fn(),
   colabModels: vi.fn().mockResolvedValue([]),
+  colabImageModels: vi.fn().mockResolvedValue([]),
   saveLibrary: vi.fn(),
   stopColab: vi.fn(),
 }));
@@ -114,4 +115,22 @@ test('deleting a role a card uses makes the card show Role missing', async () =>
   await vi.advanceTimersByTimeAsync(0);
   expect(api.saveLibrary).toHaveBeenCalledWith({ rules: 'Be kind.', roles: [{ id: 'creative', name: 'Creative', job: 'Dream.' }] });
   expect(screen.getByText('Role missing')).toBeInTheDocument();
+});
+
+test('the picture checkbox saves pictures', async () => {
+  render(RoleEditor, { onclose: () => {} });
+  await open('Creative');
+  await fireEvent.click(screen.getByRole('checkbox', { name: 'Can make pictures' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({
+    rules: 'Be kind.',
+    roles: [
+      { id: 'creative', name: 'Creative', job: 'Dream.', pictures: true },
+      { id: 'foreman', name: 'Foreman', job: 'Build.' },
+    ],
+  });
+  expect(screen.getByRole('checkbox', { name: 'Can make pictures' })).toBeChecked();
+  await fireEvent.click(screen.getByRole('checkbox', { name: 'Can make pictures' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ rules: 'Be kind.', roles: library().roles });
 });

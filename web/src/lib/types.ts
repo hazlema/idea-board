@@ -189,7 +189,7 @@ export interface RosterEntry {
 export interface Colab {
   roster: RosterEntry[];
   /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string };
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
   /** Spend across all OpenRouter connections, until reset. */
@@ -202,6 +202,8 @@ export interface Role {
   id: string;
   name: string;
   job: string;
+  /** May make pictures (gets the generate_image tool). */
+  pictures?: boolean;
 }
 
 /** Prices are per million tokens. */
