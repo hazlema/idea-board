@@ -137,7 +137,12 @@ export interface ChatMessage {
   role: Author;
   text: string;
   at: string;
-  handled: boolean;
+  /** Who this message still waits on (connection ids). */
+  owed?: string[];
+  /** Who it was addressed to, when a slash command routed it. */
+  to?: string[];
+  /** The message that started a run. */
+  start?: boolean;
   context?: Pointer[];
   /** On an agent's note: what its turn took. */
   stats?: TurnStats;
@@ -184,9 +189,13 @@ export interface RosterEntry {
 export interface Colab {
   roster: RosterEntry[];
   /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number };
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
+  /** Spend across all OpenRouter connections, until reset. */
+  spent: number;
+  /** How Claude (connection 1) is named in chat. */
+  claudeName: string;
 }
 
 export interface Role {
@@ -204,18 +213,34 @@ export interface Model {
   context: number;
 }
 
+export interface ConnectionStatus {
+  state: 'waiting' | 'thinking' | 'over-budget';
+  /** What the connection is doing right now ("reading the board"), or null. */
+  activity: string | null;
+  /** What it has done so far this turn ("read the board", "made 3 changes"). */
+  done: string[];
+}
+
 export interface RunStatus {
-  state: 'idle' | 'waiting' | 'running' | 'stopping';
+  state: 'idle' | 'running' | 'stopping';
   round: number;
   rounds: number;
-  /** Roster id of the agent whose turn it is. */
-  current: `agent:${string}` | null;
-  /** What the working agent is doing right now ("reading the board"), or null. */
-  activity?: string | null;
-  /** What it has done so far this turn ("read the board", "made 3 changes"). */
-  done?: string[];
+  /** Id of the connection whose turn it is: 'claude' or a card id. */
+  current: Author | null;
   spent: number;
   budget: number;
+  claude: 'binary' | 'mcp' | 'none';
+  /** Per connection id ('claude' or a card id). */
+  connections: Record<string, ConnectionStatus>;
+}
+
+/** One connection as the server lists it (1 is Claude, 2 onward are the OpenRouter cards). */
+export interface ConnectionInfo {
+  n: number;
+  id: string;
+  kind: 'direct' | 'openrouter';
+  available: boolean;
+  why?: string;
 }
 
 /** An operation sent to POST /api/op. */
@@ -246,12 +271,13 @@ export interface Skipped {
   summary: string;
 }
 
-export type AgentState = 'idle' | 'working' | 'off';
+export type AgentState = 'idle' | 'working';
 
 export interface BoardInfo {
   board: Board;
   presence: boolean;
   agent: AgentState;
+  claude: 'binary' | 'mcp' | 'none';
 }
 
 /** The short name shown for an object (same rules as lib/brainstorm.mjs). */

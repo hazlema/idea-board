@@ -75,8 +75,8 @@ test('a long pointer label is cut to the 200 characters the server accepts', asy
 test('messages show who said them, and the agent status line follows the agent', async () => {
   const board = emptyBoard();
   board.chat = [
-    { id: 'm_1', role: 'user', text: 'What about wizards?', at: '2026-10-22T10:00:00.000Z', handled: true },
-    { id: 'm_2', role: 'claude', text: 'Wizards could be a class.', at: '2026-10-22T10:00:05.000Z', handled: true },
+    { id: 'm_1', role: 'user', text: 'What about wizards?', at: '2026-10-22T10:00:00.000Z' },
+    { id: 'm_2', role: 'claude', text: 'Wizards could be a class.', at: '2026-10-22T10:00:05.000Z' },
   ];
   live.board = board;
   live.agent = 'working';
@@ -121,7 +121,7 @@ const agent = 'agent:x/y=qa' as const;
 function withRoster() {
   const board = emptyBoard();
   board.colab.roster = [{ id: agent, model: 'x/y', roleId: 'qa', name: 'Y · QA', modelName: 'Y', color: 'sky' }];
-  board.chat = [{ id: 'c1', role: agent, text: 'hello', at: '2026-01-01T00:00:00Z', handled: true }];
+  board.chat = [{ id: 'c1', role: agent, text: 'hello', at: '2026-01-01T00:00:00Z' }];
   live.board = board;
 }
 
@@ -139,22 +139,15 @@ test('the status line shows the turn, the round and whose turn it is', () => {
     { model: 'x/y', roleId: 'qa', settings: {} },
     { model: 'b/b', roleId: 'foreman', settings: {} },
   ];
-  live.colab = { state: 'running', round: 2, rounds: 5, current: agent, spent: 0, budget: 5 };
+  live.colab = { state: 'running', round: 2, rounds: 5, current: agent, spent: 0, budget: 5, claude: 'binary', connections: {} };
   render(Chat);
   expect(screen.getByText("Turn 5 of 15 · Round 2 of 5 · Y's turn")).toBeInTheDocument();
   live.colab = null;
 });
 
-test('a waiting run says so', () => {
-  live.colab = { state: 'waiting', round: 0, rounds: 5, current: null, spent: 0, budget: 5 };
-  render(Chat);
-  expect(screen.getByText('Waiting for your first message')).toBeInTheDocument();
-  live.colab = null;
-});
-
 test('while an agent works, the chat ends with a live line saying who it is and what it is doing', async () => {
   withRoster();
-  live.colab = { state: 'running', round: 1, rounds: 5, current: agent, spent: 0, budget: 5, activity: 'thinking', done: ['read the board', 'made 3 changes'] };
+  live.colab = { state: 'running', round: 1, rounds: 5, current: agent, spent: 0, budget: 5, claude: 'binary', connections: { [agent]: { state: 'thinking', activity: 'thinking', done: ['read the board', 'made 3 changes'] } } };
   render(Chat);
   const working = screen.getByRole('status', { name: 'Working' });
   expect(working).toHaveTextContent('Y · QA');
@@ -162,7 +155,7 @@ test('while an agent works, the chat ends with a live line saying who it is and 
   expect(working).toHaveTextContent('· read the board');
   expect(working).toHaveTextContent('· made 3 changes');
 
-  live.colab = { state: 'idle', round: 1, rounds: 5, current: null, spent: 0, budget: 5, activity: null };
+  live.colab = { state: 'idle', round: 1, rounds: 5, current: null, spent: 0, budget: 5, claude: 'binary', connections: {} };
   await waitFor(() => expect(screen.queryByRole('status', { name: 'Working' })).toBeNull());
   live.colab = null;
 });

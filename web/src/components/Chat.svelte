@@ -53,7 +53,8 @@
   const working = $derived.by((): { name: string; color: string; doing: string; done: string[] } | null => {
     const run = live.colab;
     if (run && (run.state === 'running' || run.state === 'stopping') && run.current) {
-      return { name: authorName(live.board, run.current), color: authorColor(live.board, run.current), doing: run.activity ?? 'starting its turn', done: (run.done ?? []).slice(-3) };
+      const mine = run.connections?.[run.current];
+      return { name: authorName(live.board, run.current), color: authorColor(live.board, run.current), doing: mine?.activity ?? 'starting its turn', done: (mine?.done ?? []).slice(-3) };
     }
     if (live.agent === 'working') return { name: 'Claude', color: authorColor(live.board, 'claude'), doing: 'working on the board', done: [] };
     return null;
@@ -61,7 +62,6 @@
 
   const status = $derived.by(() => {
     const run = live.colab;
-    if (run?.state === 'waiting') return 'Waiting for your first message';
     if (run && (run.state === 'running' || run.state === 'stopping')) {
       const turn = live.board?.colab?.roster.find((r) => r.id === run.current)?.modelName;
       // Turns count across rounds: each round is one turn per agent in the line-up (locked during a run).
@@ -72,7 +72,6 @@
     }
     if (live.agent === 'working') return 'Claude is working on the board';
     if (live.presence) return 'A Claude session is listening';
-    if (live.agent === 'off') return 'Background Claude is off; chat waits for a session';
     return '';
   });
 

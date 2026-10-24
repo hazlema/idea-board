@@ -1,6 +1,6 @@
 <script lang="ts">
   import Chat from '../components/Chat.svelte';
-  import AgentsPanel from '../colab/AgentsPanel.svelte';
+  import ConnectionsPanel from '../colab/ConnectionsPanel.svelte';
   import { chatPrefs } from '$lib/chatPrefs.svelte';
 </script>
 
@@ -27,5 +27,5 @@
       </Chat>
     </div>
   {/if}
-  <AgentsPanel />
+  <ConnectionsPanel />
 </section>

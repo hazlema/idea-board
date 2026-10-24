@@ -8,17 +8,16 @@ vi.mock('$lib/api', () => ({
   colab: vi.fn(),
   colabModels: vi.fn().mockResolvedValue([]),
   saveLibrary: vi.fn(),
-  startColab: vi.fn(),
   stopColab: vi.fn(),
 }));
 
 import * as api from '$lib/api';
 import { live } from '$lib/live.svelte';
 import { colabState } from './colab.svelte';
-import AgentsPanel from './AgentsPanel.svelte';
+import ConnectionsPanel from './ConnectionsPanel.svelte';
 import RoleEditor from './RoleEditor.svelte';
 
-const idle: RunStatus = { state: 'idle', round: 0, rounds: 5, current: null, spent: 0, budget: 5 };
+const idle: RunStatus = { state: 'idle', round: 0, rounds: 5, current: null, spent: 0, budget: 5, claude: 'binary', connections: {} };
 const library = () => ({
   rules: 'Be kind.',
   roles: [
@@ -103,9 +102,9 @@ test('the last role cannot be deleted', async () => {
 test('deleting a role a card uses makes the card show Role missing', async () => {
   const board = live.board!;
   board.colab.lineup.agents = [{ model: 'm/x', roleId: 'foreman', settings: {} }];
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: library() });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, connections: [], library: library() });
   vi.spyOn(window, 'confirm').mockReturnValue(true);
-  render(AgentsPanel);
+  render(ConnectionsPanel);
   await vi.advanceTimersByTimeAsync(0);
   expect(screen.queryByText('Role missing')).not.toBeInTheDocument();
 

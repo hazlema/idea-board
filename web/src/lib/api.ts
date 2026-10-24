@@ -1,4 +1,4 @@
-import type { BoardInfo, HistoryRow, Model, Op, Role, RunStatus, Skipped, VersionMeta, Board } from './types';
+import type { BoardInfo, ConnectionInfo, HistoryRow, Model, Op, Role, RunStatus, Skipped, VersionMeta, Board } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -19,6 +19,7 @@ const post = <T>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
 export const op = (o: Op): Promise<unknown> => post('/api/op', { op: o });
+export const chat = (o: Op): Promise<unknown> => op(o);
 
 export const undo = (): Promise<{ undone: HistoryRow | null; skipped: Skipped[] }> => post('/api/undo');
 export const redo = (): Promise<{ undone: HistoryRow | null; skipped: Skipped[] }> => post('/api/redo');
@@ -69,6 +70,7 @@ export interface ColabInfo {
   status: RunStatus;
   hasKey: boolean;
   library: { rules: string; roles: Role[] };
+  connections: ConnectionInfo[];
 }
 
 export const colab = (): Promise<ColabInfo> => request('/api/colab');
@@ -86,8 +88,8 @@ export async function saveLibrary(library: { rules: string; roles: Role[] }): Pr
   return res.library;
 }
 
-export async function startColab(): Promise<RunStatus> {
-  return (await post<{ status: RunStatus }>('/api/colab/start')).status;
+export async function resetSpent(): Promise<RunStatus> {
+  return (await post<{ status: RunStatus }>('/api/colab/reset-spent')).status;
 }
 
 export async function stopColab(): Promise<RunStatus> {

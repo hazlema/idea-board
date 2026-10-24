@@ -145,6 +145,16 @@ class Live {
     }
   }
 
+  /** Posts a chat message without a toast; resolves with the server's error message if it was refused. */
+  async chat(text: string, context?: Pointer[]): Promise<{ ok: true } | { error: string }> {
+    try {
+      await api.chat({ type: 'chat', text, context });
+      return { ok: true };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Could not send' };
+    }
+  }
+
   toast(text: string): void {
     const id = ++this.#toastId;
     this.toasts = [...this.toasts, { id, text }];

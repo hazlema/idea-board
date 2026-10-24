@@ -76,12 +76,12 @@
     class="flex max-h-[85vh] w-[min(820px,94vw)] flex-col gap-3 rounded-xl border border-line bg-panel p-4 shadow-2xl"
     role="dialog"
     aria-modal="true"
-    aria-label="Add an agent"
+    aria-label="Add a connection"
     tabindex="-1"
     {onkeydown}
   >
     <div class="flex items-center justify-between">
-      <h2 class="text-base font-semibold">Add an agent</h2>
+      <h2 class="text-base font-semibold">Add a connection</h2>
       <button type="button" class="px-1 text-muted hover:text-text" aria-label="Close" onclick={onclose}>✕</button>
     </div>
 
