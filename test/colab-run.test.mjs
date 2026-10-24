@@ -612,13 +612,13 @@ test('a budget crossed in a run is noted once, not again by a later answer', asy
 });
 
 // A run with an 'art' card (its role can make pictures) and a 'qa' card, a PictureMaker and a fake image model.
-function pictureSetup(complete) {
+function pictureSetup(complete, { image = async () => ({ data: PICTURE_PNG, cost: 0.05 }), turnLimit, agents } = {}) {
   const ART = { model: 'acme/alpha-one', roleId: 'art' };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   const library = new Library(path.join(dir, 'colab.json'));
   library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
-  Object.assign(store.board.colab.lineup, { agents: [ART, B], rounds: 1, budget: 5, imageModel: 'acme/painter' });
+  Object.assign(store.board.colab.lineup, { agents: agents ?? [ART, B], rounds: 1, budget: 5, imageModel: 'acme/painter' });
   const calls = [];
   const openrouter = {
     hasKey: () => true,
@@ -627,11 +627,11 @@ function pictureSetup(complete) {
       calls.push(structuredClone(rest));
       return complete(req, calls.length);
     },
-    image: async () => ({ data: PICTURE_PNG, cost: 0.05 }),
+    image: (req) => image(req),
   };
   const pictures = new PictureMaker({ store, library, openrouter });
-  const run = new ColabRun({ store, presence, claude: noClaude, library, openrouter, pictures });
-  return { store, run, calls, artId: agentId(ART.model, ART.roleId) };
+  const run = new ColabRun({ store, presence, claude: noClaude, library, openrouter, pictures, turnLimit });
+  return { store, run, calls, artId: agentId(ART.model, ART.roleId), ART };
 }
 const PICTURE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
@@ -655,4 +655,65 @@ test("a card's generate_image adds a picture authored by it", async () => {
   assert.equal(picture.caption, 'Castle');
   // Two completions for the art card and one for qa at 0.1 each, plus the picture.
   assert.ok(Math.abs(store.board.colab.spent - 0.35) < 1e-9, String(store.board.colab.spent));
+});
+
+const pictureCall = (req, n) => (n === 1 ? toolCall('generate_image', '{"prompt":"a castle"}') : text('done'));
+const pictureCount = (store) => store.board.brainstorm.pages[0].objects.filter((o) => o.kind === 'picture').length;
+
+test("stop cuts a card's picture call short and no picture is added", async () => {
+  let run;
+  const set = pictureSetup(pictureCall, {
+    image: (req) => {
+      setTimeout(() => run.stop(), 10);
+      return hang(req);
+    },
+  });
+  run = set.run;
+  const started = Date.now();
+  kickoff(set.store, run);
+  await run.finished;
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(pictureCount(set.store), 0);
+  assert.equal(chatPosts(set.store)[0].text, '(stopped partway through my turn)');
+});
+
+test("the turn limit cuts a card's picture call short and no picture is added", async () => {
+  const set = pictureSetup(pictureCall, { image: hang, turnLimit: 50, agents: [{ model: 'acme/alpha-one', roleId: 'art' }] });
+  const started = Date.now();
+  kickoff(set.store, set.run);
+  await set.run.finished;
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(pictureCount(set.store), 0);
+  assert.match(set.calls.at(-1).messages.at(-1).content, /turn is up/);
+});
+
+test('a picture that comes back after Stop is not added, but its cost counts', async () => {
+  let run;
+  const set = pictureSetup(pictureCall, {
+    image: async () => {
+      run.stop();
+      return { data: PICTURE_PNG, cost: 0.05 };
+    },
+  });
+  run = set.run;
+  kickoff(set.store, run);
+  await run.finished;
+  assert.equal(pictureCount(set.store), 0);
+  // One completion at 0.1, then the picture.
+  assert.ok(Math.abs(set.store.board.colab.spent - 0.15) < 1e-9, String(set.store.board.colab.spent));
+});
+
+test("a card's picture spend is announced at once and counted in its turn", async () => {
+  let seen = null;
+  const set = pictureSetup((req, n) => {
+    // The status sent after the picture, before the next call starts.
+    if (n === 2) seen = statusSpent.at(-1);
+    return pictureCall(req, n);
+  }, { agents: [{ model: 'acme/alpha-one', roleId: 'art' }] });
+  const statusSpent = [];
+  set.store.subscribe((e) => e.type === 'colab' && statusSpent.push(e.status.spent));
+  kickoff(set.store, set.run);
+  await set.run.finished;
+  assert.ok(Math.abs(seen - 0.15) < 1e-9, String(seen));
+  assert.ok(Math.abs(chatPosts(set.store)[0].stats.cost - 0.25) < 1e-9);
 });

@@ -120,3 +120,25 @@ test('no picture back still costs', async () => {
     done();
   }
 });
+
+test('a picture back after the signal fired is not saved; its cost counts and is reported', async () => {
+  const controller = new AbortController();
+  const { store, pictures, done } = setup({
+    image: () => {
+      controller.abort(new Error('stopped'));
+      return { data: PNG, cost: 0.05 };
+    },
+  });
+  try {
+    const heard = [];
+    await assert.rejects(pictures.make({ author: A, prompt: 'a cat', signal: controller.signal, onSpend: (c) => heard.push(c) }), /stopped/);
+    assert.deepEqual(heard, [0.05]);
+    assert.ok(Math.abs(store.board.colab.spent - 0.05) < 1e-9);
+    assert.equal(fs.existsSync(store.assets.dir) ? fs.readdirSync(store.assets.dir).length : 0, 0);
+    // The slot is given back.
+    await pictures.make({ author: A, prompt: 'one' });
+    await pictures.make({ author: A, prompt: 'two' });
+  } finally {
+    done();
+  }
+});
