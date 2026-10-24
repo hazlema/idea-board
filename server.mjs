@@ -154,10 +154,7 @@ export function createServer({ store, agent, presence, colab, port, distDir = DI
         try {
           if (op?.type === 'setColabLineup' && colab && colab.status.state !== 'idle') throw new ConflictError('a run is in progress');
           const result = store.apply(op, 'user');
-          if (op.type === 'chat') {
-            agent?.nudge();
-            colab?.onUserMessage();
-          }
+          if (op.type === 'chat') agent?.nudge();
           return sendJson(res, 200, result);
         } catch (error) {
           if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
