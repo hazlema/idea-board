@@ -547,3 +547,41 @@ test('duplicate cards get their own roster entries, and status lists every conne
   assert.equal(budget, 5);
   assert.equal(state, 'idle');
 });
+
+test("a failed answer is reported and its card stops showing 'thinking'", async () => {
+  const { store, run } = setup({ agents: [A], complete: () => { throw new Error('boom'); } });
+  run.ensureRoster();
+  let last;
+  store.subscribe((e) => { if (e.type === 'colab') last = e.status; });
+  const m = hostSays(store, 'hello', { owed: [ID_A] }).message;
+  run.answer(ID_A);
+  await run.settled();
+  assert.equal(chatPosts(store).at(-1).text, '(my turn failed: boom)');
+  assert.deepEqual(store.board.chat.find((c) => c.id === m.id).owed, []);
+  assert.equal(last.connections[ID_A].state, 'waiting');
+});
+
+test('an answer names the owed message even when the card saw it already', async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 1, complete: () => text('ok') });
+  run.ensureRoster();
+  hostSays(store, 'what about dragons?', { owed: [ID_A] });
+  kickoff(store, run);
+  await run.finished;
+  run.answer(ID_A);
+  await run.settled();
+  const last = textOf(lastUser(calls.at(-1)).content);
+  assert.match(last, /Still to answer:[\s\S]*what about dragons\?/);
+  assert.match(last, /Answer the host/);
+});
+
+test('a budget crossed in a run is noted once, not again by a later answer', async () => {
+  const { store, run } = setup({ agents: [A], rounds: 2, budget: 0.15, complete: noteThenDone });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(store.board.chat.filter((m) => m.text.startsWith('Agent run stopped: budget')).length, 1);
+  hostSays(store, 'still there?', { owed: [ID_A] });
+  run.answer(ID_A);
+  await run.settled();
+  assert.equal(chatPosts(store).at(-1).text, '(stopped: budget reached)');
+  assert.equal(store.board.chat.filter((m) => m.text.startsWith('OpenRouter agents stopped')).length, 0);
+});
