@@ -5,10 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { Agent } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
-import { Library } from '../lib/colab/library.mjs';
+import { DEFAULT_LIBRARY, Library } from '../lib/colab/library.mjs';
 import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
+import { PictureMaker } from '../lib/colab/pictures.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -608,4 +609,50 @@ test('a budget crossed in a run is noted once, not again by a later answer', asy
   await run.settled();
   assert.equal(chatPosts(store).at(-1).text, '(stopped: budget reached)');
   assert.equal(store.board.chat.filter((m) => m.text.startsWith('OpenRouter agents stopped')).length, 0);
+});
+
+// A run with an 'art' card (its role can make pictures) and a 'qa' card, a PictureMaker and a fake image model.
+function pictureSetup(complete) {
+  const ART = { model: 'acme/alpha-one', roleId: 'art' };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const library = new Library(path.join(dir, 'colab.json'));
+  library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
+  Object.assign(store.board.colab.lineup, { agents: [ART, B], rounds: 1, budget: 5, imageModel: 'acme/painter' });
+  const calls = [];
+  const openrouter = {
+    hasKey: () => true,
+    complete: async (req) => {
+      const { signal, ...rest } = req;
+      calls.push(structuredClone(rest));
+      return complete(req, calls.length);
+    },
+    image: async () => ({ data: PICTURE_PNG, cost: 0.05 }),
+  };
+  const pictures = new PictureMaker({ store, library, openrouter });
+  const run = new ColabRun({ store, presence, claude: noClaude, library, openrouter, pictures });
+  return { store, run, calls, artId: agentId(ART.model, ART.roleId) };
+}
+const PICTURE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+
+test('a card sees generate_image only with a picture role', async () => {
+  const { store, run, calls, artId } = pictureSetup(() => text('done'));
+  kickoff(store, run);
+  await run.finished;
+  const offered = (i) => calls[i].tools.map((t) => t.function.name);
+  const [artCall, qaCall] = [0, 1];
+  assert.equal(store.board.colab.roster[0].id, artId);
+  assert.ok(offered(artCall).includes('generate_image'));
+  assert.ok(!offered(qaCall).includes('generate_image'));
+});
+
+test("a card's generate_image adds a picture authored by it", async () => {
+  const { store, run, artId } = pictureSetup((req, n) => (n === 1 ? toolCall('generate_image', '{"prompt":"a castle","caption":"Castle"}') : text('done')));
+  kickoff(store, run);
+  await run.finished;
+  const picture = store.board.brainstorm.pages[0].objects.find((o) => o.kind === 'picture');
+  assert.equal(picture?.author, artId);
+  assert.equal(picture.caption, 'Castle');
+  // Two completions for the art card and one for qa at 0.1 each, plus the picture.
+  assert.ok(Math.abs(store.board.colab.spent - 0.35) < 1e-9, String(store.board.colab.spent));
 });

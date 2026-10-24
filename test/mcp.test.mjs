@@ -7,6 +7,8 @@ import { buildPrompt } from '../lib/agent.mjs';
 import { createToolRunner } from '../lib/mcp.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { withServer } from './helpers.mjs';
+import { DEFAULT_LIBRARY } from '../lib/colab/library.mjs';
+import { PictureMaker } from '../lib/colab/pictures.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
@@ -497,3 +499,45 @@ test('a reply before the turn is handed over is an ordinary reply', () => withSe
   await call('reply', { text: 'turn' });
   assert.equal(await offer, true);
 }));
+
+// A PictureMaker over the server's library with an 'art' role that can make pictures,
+// and a fake image model that returns a 1x1 PNG.
+const withPictures = (store, library) => {
+  library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
+  store.board.colab.lineup.imageModel = 'acme/painter';
+  return new PictureMaker({ store, library, openrouter: { image: async () => ({ data: PNG, cost: 0.05 }) } });
+};
+
+test("tools/list hides generate_image unless Claude's role can make pictures", () => withServer(async ({ rpc, store }) => {
+  const names = async () => (await rpc('tools/list', {})).result.tools.map((t) => t.name);
+  store.board.colab.lineup.claudeRoleId = 'qa';
+  assert.ok(!(await names()).includes('generate_image'));
+  store.board.colab.lineup.claudeRoleId = 'art';
+  assert.ok((await names()).includes('generate_image'));
+}, { pictures: withPictures }));
+
+test('a refused generate_image adds no picture', () => withServer(async ({ call, store }) => {
+  store.board.colab.lineup.claudeRoleId = 'qa';
+  const result = await call('generate_image', { prompt: 'a castle' });
+  assert.deepEqual(result, { error: 'Only roles that can make pictures can use generate_image.' });
+  assert.equal(store.board.brainstorm.pages[0].objects.filter((o) => o.kind === 'picture').length, 0);
+  store.board.colab.lineup.claudeRoleId = 'art';
+  const made = await call('generate_image', { prompt: 'a castle', caption: 'Castle' });
+  assert.equal(made.caption, 'Castle');
+  const picture = store.board.brainstorm.pages[0].objects.find((o) => o.id === made.id);
+  assert.equal(picture.author, 'claude');
+}, { pictures: withPictures }));
+
+test('generate_image without a picture maker says no image model is set, and is not batchable', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  try {
+    const store = new BoardStore(path.join(dir, 'board.json'));
+    const tools = createToolRunner(store, null);
+    await assert.rejects(tools.call('generate_image', { prompt: 'x' }), { message: 'No image model is set; choose one in the sidebar.' });
+    const batch = await tools.call('batch', { calls: [{ tool: 'generate_image', args: { prompt: 'x' } }] });
+    assert.equal(batch.failed.error, "generate_image can't run inside a batch");
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});

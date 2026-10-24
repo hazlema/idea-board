@@ -12,7 +12,8 @@ import { createServer } from '../server.mjs';
 // to /mcp), `call` (a tool call parsed from its text block), `userOp` (the
 // browser's op endpoint), the store and the agent nudges seen so far. `agent`
 // overrides fields of the fake agent (it is connected through the binary by default).
-export async function withServer(fn, { graceMs, distDir, colab, agent: agentFields } = {}) {
+// `pictures` is a function of (store, library) returning a PictureMaker for the MCP runner.
+export async function withServer(fn, { graceMs, distDir, colab, agent: agentFields, pictures: makePictures } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   // The built page is dist/ in real use; tests get a tiny stand-in.
   if (!distDir) {
@@ -30,12 +31,13 @@ export async function withServer(fn, { graceMs, distDir, colab, agent: agentFiel
   const colabRun = colab?.(store, presence, agent) ?? new ColabRun({ store, presence, claude: agent, library: new Library(path.join(dir, 'colab.json')), openrouter: { hasKey: () => false, models: async () => [] } });
   const library = colabRun.library;
   const room = new Room({ store, agent, presence, colab: colabRun, library });
-  const server = createServer({ store, agent, presence, colab: colabRun, room, port: 0, distDir });
+  const pictures = makePictures?.(store, library);
+  const server = createServer({ store, agent, presence, colab: colabRun, room, pictures, port: 0, distDir });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   // createServer validated against port 0; rebuild with the real port.
   server.close();
-  const real = createServer({ store, agent, presence, colab: colabRun, room, port, distDir });
+  const real = createServer({ store, agent, presence, colab: colabRun, room, pictures, port, distDir });
   await new Promise((resolve) => real.listen(port, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${port}`;
   let rpcId = 0;

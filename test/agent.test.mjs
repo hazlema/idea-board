@@ -275,3 +275,40 @@ test('two turns at once run one after the other', async () => {
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+test("the binary gets --disallowedTools for generate_image without the permission, and the board's model", async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_1' }));
+`;
+  let allowed = false;
+  const { dir, store, agent } = setup(echo, { canMakePictures: () => allowed, model: () => 'opus' });
+  try {
+    const argvOf = async () => JSON.parse((await agent.takeTurn('go', { timeoutMs: 5000 })).text);
+    const denied = await argvOf();
+    assert.equal(denied[denied.indexOf('--disallowedTools') + 1], 'mcp__board__generate_image');
+    assert.equal(denied[denied.indexOf('--model') + 1], 'opus');
+    allowed = true;
+    const granted = await argvOf();
+    assert.ok(!granted.includes('--disallowedTools'));
+    assert.equal(granted[granted.indexOf('--model') + 1], 'opus');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('no --model when the model is empty; a string model still works', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_1' }));
+`;
+  for (const [model, expected] of [[() => '', null], ['haiku', 'haiku']]) {
+    const { dir, store, agent } = setup(echo, { model });
+    try {
+      const argv = JSON.parse((await agent.takeTurn('go', { timeoutMs: 5000 })).text);
+      assert.equal(argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : null, expected);
+      store.historyLog.flush();
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  }
+});
