@@ -763,3 +763,23 @@ test("pictures don't stay in the conversation", async () => {
   assert.ok(!text3.includes('data:image'));
   assert.ok(text3.length < 50_000);
 });
+
+test('a step with several tool calls keeps the tool results together, pictures after them, and swaps them all', async () => {
+  const many = (id) => ({ message: { role: 'assistant', content: null, tool_calls: [
+    { id: 'a', type: 'function', function: { name: 'view_picture', arguments: JSON.stringify({ id }) } },
+    { id: 'b', type: 'function', function: { name: 'add_note', arguments: '{"text":"hi"}' } },
+    { id: 'c', type: 'function', function: { name: 'view_picture', arguments: JSON.stringify({ id }) } },
+  ] }, cost: 0.1 });
+  const { store, run, calls } = setup({ agents: [A], rounds: 2, models: [{ id: A.model, name: 'Alpha', vision: true }], complete: (req, n) => (n === 1 ? many(pic.id) : text('ok')) });
+  const pic = withPicture(store);
+  await run.prepare();
+  kickoff(store, run);
+  await run.finished;
+  const m = calls[1].messages;
+  const at = m.findLastIndex((x) => x.role === 'assistant');
+  assert.deepEqual(m.slice(at + 1).map((x) => x.role), ['tool', 'tool', 'tool', 'user', 'user']);
+  assert.ok(m.slice(at + 4).every((x) => x.content[1].type === 'image_url'));
+  const later = JSON.stringify(calls.at(-1).messages);
+  assert.ok(!later.includes('data:image'));
+  assert.equal(later.split(`[picture ${pic.id} shown]`).length - 1, 2);
+});
