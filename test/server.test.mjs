@@ -235,10 +235,10 @@ test('the browser opens with each platform\'s own command', () => {
 const SECRET = 'sk-or-test-secret-123';
 function colabFor({ key = SECRET, complete = async () => ({ message: { role: 'assistant', content: 'hello' }, cost: 0.1 }), models } = {}) {
   const calls = [];
-  const factory = (store, presence) => {
+  const factory = (store, presence, claude) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-'));
     const openrouter = { hasKey: () => Boolean(key), models: models ?? (async () => [{ id: 'acme/alpha-one' }]), complete: async (req) => { calls.push(req); return complete(req); } };
-    return new ColabRun({ store, presence, library: new Library(path.join(dir, 'colab.json')), openrouter });
+    return new ColabRun({ store, presence, claude, library: new Library(path.join(dir, 'colab.json')), openrouter });
   };
   return { factory, calls };
 }
@@ -300,6 +300,7 @@ test('a line-up with an empty model saves, but cannot start', async () => {
     const res = await userOp({ type: 'chat', text: '/start go' });
     assert.equal(res.status, 400);
     assert.match((await res.json()).error, /Agent 2 has no model/);
+    assert.equal(store.board.chat.length, 0);
   }, { colab: factory });
 });
 
@@ -331,6 +332,8 @@ test('a /start chat runs at once and refuses a new line-up and a second start me
     release();
     await colab.finished;
     assert.ok(calls.length > 0);
+    // Claude (the stand-in binary) takes run turns too.
+    assert.ok(store.board.chat.some((m) => m.role === 'claude' && m.text === 'my turn'));
     assert.equal(colab.status.state, 'idle');
   }, { colab: factory });
 });

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
 import { Library } from '../lib/colab/library.mjs';
 import { Room } from '../lib/room.mjs';
+import { ConflictError, OpError } from '../lib/board.mjs';
 import { agentId } from '../lib/authors.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
@@ -30,6 +31,7 @@ function setup({ via = 'binary', cards = [A, B], state = 'idle' } = {}) {
     ensureRoster: () => { calls.ensureRoster += 1; },
     canAnswer: (id) => (cards.some((c) => agentId(c.model, c.roleId) === id) ? { ok: true } : { ok: false, why: 'no-model' }),
     answer: (id) => calls.answer.push(id),
+    startError: () => calls.startError ?? null,
     start: (id) => calls.start.push(id),
     stop: () => { calls.stop += 1; },
     budgetChanged: () => { calls.budgetChanged += 1; },
@@ -182,4 +184,12 @@ test('presence and agent events re-send the run status', () => {
   store.emit({ type: 'presence', attached: true });
   store.emit({ type: 'agent', state: 'idle' });
   assert.deepEqual(seen.filter((t) => t === 'colab').length, 2);
+});
+
+test('a /start the run refuses posts nothing', () => {
+  const { room, store, calls } = setup();
+  calls.startError = 'Agent 2 has no model';
+  assert.throws(() => room.userChat({ text: '/start go' }), (error) => error instanceof OpError && !(error instanceof ConflictError) && /Agent 2 has no model/.test(error.message));
+  assert.equal(store.board.chat.length, 0);
+  assert.deepEqual(calls.start, []);
 });

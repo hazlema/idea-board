@@ -98,8 +98,8 @@ async function colabRoute(run, room, pathname, req, res) {
     const body = (await readBody(req)) ?? {};
     try {
       const saved = library.save({ rules: body.rules, roles: body.roles });
-      // Role names and which cards can answer follow the library.
-      room.lineupChanged();
+      // Role names and which cards can answer follow the library (after the run, like line-up edits).
+      if (run.status.state === 'idle') room.lineupChanged();
       sendJson(res, 200, { library: saved });
     } catch (error) { fail(error); }
   } else if (pathname === '/api/colab/reset-spent' && req.method === 'POST') {

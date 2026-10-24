@@ -23,10 +23,11 @@ export async function withServer(fn, { graceMs, distDir, colab, agent: agentFiel
   const store = new BoardStore(path.join(dir, 'board.json'));
   const presence = new Presence(store, { graceMs: graceMs ?? 50 });
   const nudges = [];
-  // `colab` is a function of (store, presence) returning a ColabRun, since it needs this store.
+  // A stand-in for the binary: its run turns say one line.
+  const agent = { running: false, found: true, via: () => 'binary', nudge: () => nudges.push(Date.now()), takeTurn: async () => ({ ok: true, text: 'my turn' }), ...agentFields };
+  // `colab` is a function of (store, presence, claude) returning a ColabRun, since it needs this store.
   // Without one, a run with no OpenRouter key, so only Claude can answer.
-  const colabRun = colab?.(store, presence) ?? new ColabRun({ store, presence, library: new Library(path.join(dir, 'colab.json')), openrouter: { hasKey: () => false, models: async () => [] } });
-  const agent = { running: false, found: true, via: () => 'binary', nudge: () => nudges.push(Date.now()), ...agentFields };
+  const colabRun = colab?.(store, presence, agent) ?? new ColabRun({ store, presence, claude: agent, library: new Library(path.join(dir, 'colab.json')), openrouter: { hasKey: () => false, models: async () => [] } });
   const library = colabRun.library;
   const room = new Room({ store, agent, presence, colab: colabRun, library });
   const server = createServer({ store, agent, presence, colab: colabRun, room, port: 0, distDir });
