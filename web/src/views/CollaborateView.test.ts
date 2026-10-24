@@ -18,16 +18,16 @@ beforeEach(() => {
 
 test('Pop out floats the chat; the tab says so and can bring it back', async () => {
   render(CollaborateView);
-  expect(screen.getByPlaceholderText(/tell claude/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message everyone/i)).toBeInTheDocument();
 
   await fireEvent.click(screen.getByRole('button', { name: /Pop out/ }));
   expect(chatPrefs.popped).toBe(true);
   expect(screen.getByText('The chat is popped out.')).toBeInTheDocument();
-  expect(screen.queryByPlaceholderText(/tell claude/i)).toBeNull();
+  expect(screen.queryByPlaceholderText(/message everyone/i)).toBeNull();
 
   await fireEvent.click(screen.getByRole('button', { name: 'Bring it back here' }));
   expect(chatPrefs.popped).toBe(false);
-  expect(screen.getByPlaceholderText(/tell claude/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message everyone/i)).toBeInTheDocument();
 });
 
 test('the chat window opens where it was left, and ✕ puts the chat back in its tab', async () => {
@@ -38,7 +38,7 @@ test('the chat window opens where it was left, and ✕ puts the chat back in its
   expect(box.style.left).toBe('30px');
   expect(box.style.top).toBe('40px');
   expect(box.style.width).toBe('400px');
-  expect(screen.getByPlaceholderText(/tell claude/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message everyone/i)).toBeInTheDocument();
 
   await fireEvent.click(screen.getByRole('button', { name: 'Close the chat window' }));
   expect(chatPrefs.popped).toBe(false);
