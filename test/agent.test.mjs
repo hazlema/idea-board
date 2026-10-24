@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Agent } from '../lib/agent.mjs';
+import { Agent, findOnPath } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
 
 // A stand-in for the claude CLI: waits a moment (so a message can arrive
@@ -51,6 +51,97 @@ test('a message sent while Claude is working is answered by a second run', async
     const final = store.board.chat;
     assert.equal(final.at(-1).text, 'answered: second question');
     assert.ok(final.filter((m) => m.role === 'user').every((m) => m.owed.length === 0));
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+function setup(fake, opts = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  const bin = path.join(dir, 'claude');
+  fs.writeFileSync(bin, fake, { mode: 0o755 });
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const agent = new Agent(store, { attached: () => false }, { mcpUrl: 'http://127.0.0.1:1/mcp', cwd: dir, claudeBin: bin, log: () => {}, ...opts });
+  const idle = () => new Promise((resolve) => {
+    const off = store.subscribe((event) => {
+      if (event.type === 'agent' && event.state === 'idle') { off?.(); resolve(); }
+    });
+  });
+  return { dir, store, agent, idle };
+}
+
+test('findOnPath finds an executable in PATH and not a missing one', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+    assert.equal(findOnPath('claude', { PATH: dir }), true);
+    assert.equal(findOnPath('nope', { PATH: dir }), false);
+    assert.equal(findOnPath(path.join(dir, 'claude'), {}), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('nudge does nothing when the binary is missing', async () => {
+  const { dir, store, agent } = setup(FAKE_CLAUDE, { found: false });
+  try {
+    const events = [];
+    store.subscribe((event) => { if (event.type === 'agent') events.push(event); });
+    store.apply({ type: 'chat', text: 'hello', owed: ['claude'] }, 'user');
+    agent.nudge();
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(events, []);
+    assert.equal(agent.via(), 'none');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('a reply already answered by a session is dropped', async () => {
+  const { dir, store, agent, idle } = setup(FAKE_CLAUDE);
+  try {
+    store.apply({ type: 'chat', text: 'question', owed: ['claude'] }, 'user');
+    const done = idle();
+    agent.nudge();
+    store.apply({ type: 'chat', text: 'session answer' }, 'claude');
+    await done;
+    const replies = store.board.chat.filter((m) => m.role === 'claude');
+    assert.deepEqual(replies.map((m) => m.text), ['session answer']);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('the role text is appended to the system prompt', async () => {
+  const echo = `#!/usr/bin/env node
+const sys = process.argv[process.argv.indexOf('--append-system-prompt') + 1];
+process.stdout.write(JSON.stringify({ result: sys, session_id: 's_1' }));
+`;
+  const { dir, store, agent, idle } = setup(echo, { role: () => 'Be the Foreman.' });
+  try {
+    store.apply({ type: 'chat', text: 'hi', owed: ['claude'] }, 'user');
+    const done = idle();
+    agent.nudge();
+    await done;
+    const text = store.board.chat.find((m) => m.role === 'claude').text;
+    assert.ok(text.includes('Your role on this board:'));
+    assert.ok(text.includes('Be the Foreman.'));
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('takeTurn returns the text and posts nothing', async () => {
+  const { dir, store, agent } = setup(FAKE_CLAUDE);
+  try {
+    const before = store.board.chat.length;
+    assert.deepEqual(await agent.takeTurn('your turn', { timeoutMs: 5000 }), { ok: true, text: 'answered: your turn' });
+    assert.equal(store.board.chat.length, before);
+    assert.equal(agent.running, false);
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });
