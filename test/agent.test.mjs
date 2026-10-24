@@ -147,3 +147,72 @@ test('takeTurn returns the text and posts nothing', async () => {
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+const SLOW_CLAUDE = `#!/usr/bin/env node
+setTimeout(() => process.stdout.write(JSON.stringify({ result: 'late', session_id: 's_1' })), 5000);
+`;
+
+test('aborting the signal kills the turn', async () => {
+  const { dir, store, agent } = setup(SLOW_CLAUDE);
+  try {
+    const ctl = new AbortController();
+    const started = Date.now();
+    const turn = agent.takeTurn('x', { timeoutMs: 10000, signal: ctl.signal });
+    setTimeout(() => ctl.abort(), 100);
+    const result = await turn;
+    assert.equal(result.ok, false);
+    assert.ok(Date.now() - started < 3000);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('takeTurn honors timeoutMs, retry included', async () => {
+  const { dir, store, agent } = setup(SLOW_CLAUDE);
+  try {
+    store.setSessionId('old');
+    const started = Date.now();
+    const result = await agent.takeTurn('x', { timeoutMs: 300 });
+    assert.equal(result.ok, false);
+    assert.ok(Date.now() - started < 1500);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('a message nudged during a turn is answered after the turn', async () => {
+  const { dir, store, agent } = setup(FAKE_CLAUDE);
+  try {
+    const idle = new Promise((resolve) => {
+      let n = 0;
+      store.subscribe((event) => { if (event.type === 'agent' && event.state === 'idle' && ++n === 2) resolve(); });
+    });
+    const turn = agent.takeTurn('turn', { timeoutMs: 5000 });
+    store.apply({ type: 'chat', text: 'during', owed: ['claude'] }, 'user');
+    agent.nudge();
+    assert.equal((await turn).ok, true);
+    await idle;
+    assert.equal(store.board.chat.at(-1).text, 'answered: during');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('a turn waits for a run in flight', async () => {
+  const { dir, store, agent } = setup(FAKE_CLAUDE);
+  try {
+    store.apply({ type: 'chat', text: 'q', owed: ['claude'] }, 'user');
+    agent.nudge();
+    const started = Date.now();
+    const result = await agent.takeTurn('t', { timeoutMs: 5000 });
+    assert.equal(result.text, 'answered: t');
+    assert.ok(Date.now() - started >= 250);
+    assert.equal(store.board.chat.at(-1).text, 'answered: q');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
