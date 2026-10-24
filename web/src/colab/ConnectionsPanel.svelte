@@ -62,6 +62,11 @@
   const MODEL_LABELS: Record<string, string> = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku', fable: 'Fable' };
   const claudeLabel = $derived(MODEL_LABELS[claudeModel] ?? claudeModel);
 
+  // A run starting closes the popup; it stays closed when the run ends.
+  $effect(() => {
+    if (!canEdit) claudePopup = false;
+  });
+
   function closeClaudePopup(): void {
     claudePopup = false;
     claudeButton?.focus();

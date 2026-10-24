@@ -312,3 +312,18 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
     }
   }
 });
+
+test('the binary starting a run tells onRunStart', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: 'ok', session_id: 's_1' }));
+`;
+  let starts = 0;
+  const { dir, store, agent } = setup(echo, { onRunStart: () => (starts += 1) });
+  try {
+    await agent.takeTurn('go', { timeoutMs: 5000 });
+    assert.equal(starts, 1);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});

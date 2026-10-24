@@ -537,3 +537,17 @@ test('Image model saves', async () => {
   await fireEvent.click(await screen.findByRole('button', { name: /Imagen 9/ }));
   expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', imageModel: 'google/imagen-9' }));
 });
+
+test('the Claude popup stays closed once a run that started while it was open ends', async () => {
+  live.board = emptyBoard();
+  live.colab = idle;
+  render(ConnectionsPanel);
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  await fireEvent.click(screen.getByRole('button', { name: '1. Claude · Sonnet' }));
+  expect(screen.getByRole('group', { name: "Claude's model" })).toBeInTheDocument();
+  live.colab = { ...idle, state: 'running' };
+  await waitFor(() => expect(screen.getByRole('button', { name: '1. Claude · Sonnet' })).toBeDisabled());
+  live.colab = idle;
+  await waitFor(() => expect(screen.getByRole('button', { name: '1. Claude · Sonnet' })).toBeEnabled());
+  expect(screen.queryByRole('group', { name: "Claude's model" })).toBeNull();
+});

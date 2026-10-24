@@ -127,7 +127,7 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   // A session only sees generate_image while Claude's role can make pictures.
   const listTools = () => (pictures?.canMake('claude') ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image'));
-  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures }), { listTools });
+  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools });
 
   return http.createServer(async (req, res) => {
     // Only this machine, and only this page: block DNS rebinding and
@@ -289,6 +289,7 @@ export function connect({ store, presence, library, openrouter, pictures, agent:
   const agent = new Agent(store, presence, {
     model: () => store.board.colab.lineup.claudeModel,
     canMakePictures: () => Boolean(pictures?.canMake('claude')),
+    onRunStart: () => pictures?.newTurn('claude'),
     ...agentOptions,
     quiet: () => colab.status.state !== 'idle',
   });

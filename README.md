@@ -138,9 +138,12 @@ apply from the next answer.
 **Pictures.** A role has a **Can make pictures** checkbox in the role editor
 (for example a "Concept Art" role). Connections with such a role get a
 `generate_image` tool that draws with the **Image model** from the sidebar
-footer. It is limited to 2 pictures per turn, and each one is paid from the
-run's budget. OpenRouter agents whose model can
-see images look at the board's pictures too.
+footer. The picture lands on the Brainstorm canvas marked "<name> added"
+(Keep / Dismiss). It is limited to 2 pictures per turn, and each one is paid
+from the run's budget. OpenRouter agents whose model can
+see images look at the board's pictures too. If Claude's role gains Can make
+pictures while an MCP session is connected, reconnect it (/mcp) to see the new
+tool; the permission itself applies at once.
 
 **The key.** OpenRouter connections need an OpenRouter key, from `OPENROUTER_API_KEY` or the
 file `~/.config/openrouter/key`. It stays on the server and is never sent to

@@ -164,3 +164,20 @@ test('image without a picture throws with the cost', async () => {
   const client = new OpenRouter({ key: 'k', fetch: async () => reply });
   await assert.rejects(client.image({ model: 'a/paint', prompt: 'x' }), (e) => e instanceof OpenRouterError && /returned no picture/.test(e.message) && e.cost === 0.01);
 });
+
+test('image sends only image to an image-only model, and both when the model can write text or is unknown', async () => {
+  const reply = json({ choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${PNG_1x1_BASE64}` } }] } }], usage: { cost: 0 } });
+  const sent = [];
+  const data = [
+    { id: 'a/only', architecture: { output_modalities: ['image'] } },
+    { id: 'a/both', architecture: { output_modalities: ['image', 'text'] } },
+  ];
+  const fetch = async (url, init) => {
+    if (url.endsWith('/models')) return json({ data });
+    sent.push(JSON.parse(init.body).modalities);
+    return reply;
+  };
+  const client = new OpenRouter({ key: 'k', fetch });
+  for (const model of ['a/only', 'a/both', 'a/unknown']) await client.image({ model, prompt: 'x' });
+  assert.deepEqual(sent, [['image'], ['image', 'text'], ['image', 'text']]);
+});

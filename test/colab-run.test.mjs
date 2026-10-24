@@ -7,7 +7,7 @@ import { Agent } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { DEFAULT_LIBRARY, Library } from '../lib/colab/library.mjs';
 import { OpenRouterError } from '../lib/colab/openrouter.mjs';
-import { ColabRun } from '../lib/colab/run.mjs';
+import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 
@@ -782,4 +782,9 @@ test('a step with several tool calls keeps the tool results together, pictures a
   const later = JSON.stringify(calls.at(-1).messages);
   assert.ok(!later.includes('data:image'));
   assert.equal(later.split(`[picture ${pic.id} shown]`).length - 1, 2);
+});
+
+test('generate_image reads as making a picture, then made a picture', () => {
+  assert.equal(activityFor('generate_image', '{"prompt":"x"}'), 'making a picture');
+  assert.equal(doneFor('generate_image', '{"prompt":"x"}'), 'made a picture');
 });

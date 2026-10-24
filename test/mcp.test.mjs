@@ -541,3 +541,15 @@ test('generate_image without a picture maker says no image model is set, and is 
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+test("Claude's spent is announced after generate_image, and a wait_for_chat return resets its picture count", () => withServer(async ({ call, store }) => {
+  store.board.colab.lineup.claudeRoleId = 'art';
+  const spents = [];
+  store.subscribe((event) => event.type === 'colab' && spents.push(event.status.spent));
+  await call('generate_image', { prompt: 'a' });
+  assert.ok(spents.at(-1) >= 0.05);
+  await call('generate_image', { prompt: 'b' });
+  assert.match((await call('generate_image', { prompt: 'c' })).error, /Picture limit/);
+  await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.equal((await call('generate_image', { prompt: 'c' })).error, undefined);
+}, { pictures: withPictures }));

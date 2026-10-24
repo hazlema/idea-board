@@ -142,3 +142,15 @@ test('a picture back after the signal fired is not saved; its cost counts and is
     done();
   }
 });
+
+test('newTurn starts an author\'s picture count over', async () => {
+  const { pictures, done } = setup();
+  try {
+    for (let i = 0; i < PICTURES_PER_TURN; i += 1) await pictures.make({ author: A, prompt: 'x' });
+    await assert.rejects(pictures.make({ author: A, prompt: 'x' }), { message: LIMIT_COPY });
+    pictures.newTurn(A);
+    await pictures.make({ author: A, prompt: 'x' });
+  } finally {
+    done();
+  }
+});
