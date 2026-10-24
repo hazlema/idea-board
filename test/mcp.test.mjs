@@ -474,3 +474,15 @@ test('your_role appears when set', () => withServer(async ({ call, presence }) =
   const waited = await call('wait_for_chat', { timeout_seconds: 1 });
   assert.equal(waited.your_role, 'Foreman job');
 }));
+
+test('a reply before the turn is handed over is an ordinary reply', () => withServer(async ({ call, userOp, store, presence }) => {
+  await userOp({ type: 'chat', text: 'question', owed: ['claude'] });
+  const offer = presence.offerTurn('go', { timeoutMs: 2000 });
+  const replied = await call('reply', { text: 'answer' });
+  assert.equal('turn' in replied, false);
+  assert.deepEqual(store.board.chat.find((m) => m.role === 'user').owed, []);
+  const waited = await call('wait_for_chat', { timeout_seconds: 1 });
+  assert.equal(waited.turn.prompt, 'go');
+  await call('reply', { text: 'turn' });
+  assert.equal(await offer, true);
+}));
