@@ -109,3 +109,18 @@ test('addColabSpend and setColabSpent save without history', () => {
   assert.equal(store.historyLog.entries().length, 0);
   fs.rmSync(dir, { recursive: true });
 });
+
+test('addColabSpend and setColabSpent ignore a cost that is not a finite, non-negative number', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  store.addColabSpend(0.5);
+  for (const bad of [NaN, Infinity, -Infinity, -1, undefined, '2']) {
+    store.addColabSpend(bad);
+    store.setColabSpent(bad);
+  }
+  assert.equal(store.board.colab.spent, 0.5);
+  store.setColabSpent(0);
+  assert.equal(store.board.colab.spent, 0);
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});
