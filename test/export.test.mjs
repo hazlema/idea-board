@@ -56,7 +56,7 @@ test('design doc has the exact sections for the rest of the board', () => {
   const md = render(sampleBoard());
   assert.match(md, /- \*\*Mana:\*\* a resource _\(Claude added, not reviewed\)_\n/);
   assert.match(md, /### Notes\n\n> first line\n> second line\n\n> another note\n/);
-  assert.match(md, /### Pictures\n\n- Tower sketch \(`game\.assets\/a{32}\.png`\)\n/);
+  assert.match(md, /### Pictures\n\n\*\*Tower sketch\*\* · You\n\n!\[Tower sketch\]\(<game\.assets\/a{32}\.png>\)\n/);
   assert.match(md, /### Links\n\n- Wizards → first line \(see\)\n- first line → Wizards\n/);
   assert.match(md, /### Goal\n\nA small game\.\n\n### Empty one\n\n## Brainstorm/);
   assert.match(md, /### Accepted cards\n\n- \*\*Start\*\*: begin here\n- \*\*Finish\*\*\n/);
@@ -90,4 +90,13 @@ test('exportDesignDoc writes the design file beside the board', () => {
   assert.match(md, /^# Exported\n\n_Exported \d{4}-\d{2}-\d{2} from idea board\._\n/);
   assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp')), []);
   fs.rmSync(dir, { recursive: true });
+});
+
+test('pictures are embedded as images, with who made them and a safe caption', () => {
+  const b = emptyBoard('Art');
+  applyOp(b, { type: 'addObject', kind: 'picture', asset: `${'b'.repeat(32)}.png`, caption: 'Comp [01]\nJewelbox' }, 'claude');
+  applyOp(b, { type: 'addObject', kind: 'picture', asset: `${'c'.repeat(32)}.webp` }, 'user');
+  const md = renderDesignDoc(b, { assetsDirName: 'my board.assets', date: '2026-10-24' });
+  assert.match(md, /\*\*Comp \[01\] Jewelbox\*\* · Claude _\(Claude added, not reviewed\)_\n\n!\[Comp \\\[01\\\] Jewelbox\]\(<my board\.assets\/b{32}\.png>\)\n/);
+  assert.match(md, /\*\*Picture\*\* · You\n\n!\[Picture\]\(<my board\.assets\/c{32}\.webp>\)\n/);
 });

@@ -244,10 +244,12 @@ Claude forget a rejection.
 The **⋯** menu has **Export design doc**: it writes `<board>.design.md` next
 to the board as Markdown: the brief; each group's entries as bullets, `[x]`
 for agreed, `[ ]` for undecided and a plain bullet for a note (ruled-out
-entries left out); notes; picture captions with file paths; links; accepted
-flowchart cards and the connections between them; and the Ruled out list with
-reasons. Anything Claude added that you have not kept yet is tagged
-_(Claude added, not reviewed)_.
+entries left out); notes; pictures, each with its caption and who made it,
+embedded as an image from `<board>.assets/` so a Markdown viewer shows the
+reference art inline; links; accepted flowchart cards and the connections
+between them; and the Ruled out list with reasons. Anything Claude added that
+you have not kept yet is tagged _(Claude added, not reviewed)_. To hand the
+design to someone, send the `.design.md` together with the `.assets` folder.
 
 ## Claude in the chat
 
