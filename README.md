@@ -43,8 +43,7 @@ node ~/idea-board/server.mjs plans/game.json --port 4800
 The board opens in your browser at http://127.0.0.1:4777 (or your `--port`).
 If `dist/` is missing the server tells you to run `npm run build`.
 
-Options: `--port <n>`, `--no-agent` (never run a background Claude; see below),
-`--no-open` (don't open a browser), `--help`. The default port can also be set with `IDEA_BOARD_PORT`.
+Options: `--port <n>`, `--no-open` (don't open a browser), `--help`. The default port can also be set with `IDEA_BOARD_PORT`.
 
 Files next to the board (for `plans/game.json`):
 
@@ -79,32 +78,61 @@ watch the board change while you talk: drag it by its title bar, resize it from
 the corner, and close it with **✕** to put it back in the tab. The text size and
 where you left the window are remembered in this browser.
 
-#### Agents
+#### Connections
 
-Besides Claude, you can have other models talk about the board with you and
-with each other. Pick OpenRouter models in the **Agents** panel, give each a
-role, press **Start**, then post your first message. The agents take turns,
-one turn each per round, and change the board the same way Claude does.
+The chat is one room. Everyone connected is listed in the **Connections**
+sidebar, each with a number, a role and what it is doing right now (Waiting,
+Thinking…, or the tool it is using). You talk to all of them in the chat.
 
-- **+ Add agent** adds a card. Pick the model from a searchable list (only
-  models that support tools, with the price per million tokens) and a role.
-  Drag the grip to reorder (the order is the turn order); **✕** removes a card.
-- Set the number of **rounds** and a **budget** in dollars. **Start** begins a
-  run; **Stop** ends it after the current turn.
-- The card whose turn it is lights up, and the chat header reads "Round 2 of
-  5 · <model>'s turn". Spend shows as "$0.42 of $5".
-- **Edit roles…** opens the role editor. It starts with four roles (Creative
-  Director & Lore, QA & Playtester, Foreman, Systems Designer) and the shared
-  rules every agent follows. Each has text for every board (saved in
-  `~/.config/idea-board/colab.json` on Linux, the platform's config folder
-  elsewhere) and **Extra for this board** (saved in the board file). Edits
-  apply from the next turn.
+- **Direct connection:** Claude is always connection 1 and can't be removed or
+  moved. The label says how it is connected: **via binary** (the `claude`
+  command, found at startup or at `IDEA_BOARD_CLAUDE`), **via MCP** (a Claude
+  Code session that is listening, see below) or **not connected**. Claude has a
+  role picker like the others.
+- **OpenRouter connections:** connections 2, 3 and so on. **+ Add connection**
+  adds a card. Pick the model from a searchable list (only models that support
+  tools, with the price per million tokens) and a role. Drag the grip to
+  reorder (the order is the turn order); **✕** removes a card. Numbers are the
+  positions in the sidebar when you send a message.
+- The sidebar footer holds **Rounds**, **Budget ($)**, **Turn timeout (min)**,
+  **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
+- The card whose turn it is lights up, and during a run the chat header reads
+  "Round 2 of 5 · <model>'s turn" with a **Stop** button.
 
-Each agent posts in the chat as "Model · Role". What it adds is marked
-"<name> added" with **Keep** and **Dismiss**, and History and Ruled out show
-its name. Each agent turn is one undoable turn.
+What you type decides who answers:
 
-**The key.** Agents need an OpenRouter key, from `OPENROUTER_API_KEY` or the
+| You type | What happens |
+|---|---|
+| `What do you think of this?` | Everyone connected answers once, at the same time, in their own role. They don't read each other's answers to it. |
+| `/chat 2 What do you think?` (or `/c 2 …`) | Only connection 2 answers. The others see the message later but don't reply. |
+| `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
+| `/stop` | Ends the run after the current turn (same as **Stop**). |
+| `//hello` | Sends `/hello` as plain text. |
+
+During a run, anything you type steers it: each connection sees it on its
+next turn, and it doesn't start a round of plain answers. `/chat N` during a
+run doesn't interrupt; connection N gets it on its next turn. If nobody is
+connected, your message is still posted with a note saying so.
+
+A command that can't work is not sent: an unknown command, `/chat` with a
+number that has no connection (or Claude when it is not connected, or a card
+that is over budget), `/chat` or `/start` with no text, `/start` while a run
+is going, `/stop` with no run. Your text stays in the box with the reason.
+While the box starts with `/`, a line under it lists the commands.
+
+Everyone, Claude included, changes the board the same way and takes part in
+`/start` runs. Each OpenRouter connection posts in the chat as "Model · Role".
+What it adds is marked "<name> added" with **Keep** and **Dismiss**, and
+History and Ruled out show its name. Each answer is one undoable turn.
+
+**Edit roles…** opens the role editor. It starts with four roles (Creative
+Director & Lore, QA & Playtester, Foreman, Systems Designer) and the shared
+rules every connection follows. Each has text for every board (saved in
+`~/.config/idea-board/colab.json` on Linux, the platform's config folder
+elsewhere) and **Extra for this board** (saved in the board file). Edits
+apply from the next answer.
+
+**The key.** OpenRouter connections need an OpenRouter key, from `OPENROUTER_API_KEY` or the
 file `~/.config/openrouter/key`. It stays on the server and is never sent to
 the page. If it is missing, the panel shows the exact command that saves it:
 
@@ -112,11 +140,16 @@ the page. If it is missing, the panel shows the exact command that saves it:
 mkdir -p ~/.config/openrouter && read -rs -p "OpenRouter key: " k && printf '%s' "$k" > ~/.config/openrouter/key && chmod 600 ~/.config/openrouter/key; unset k; echo
 ```
 
-**Cost.** Every model call costs money. A run stops when it reaches its
-budget, which is checked before each turn. The background Claude doesn't
-answer chat messages while a run is going. If the server restarts mid-run,
-the run ends and a note in the chat says how far it got; press **Start**
-again.
+**Cost.** Every OpenRouter call costs money. One budget covers plain
+answers, `/chat` answers and `/start` runs. **Spent** counts them all, is saved
+with the board and survives a restart; **Reset** (after a confirm) puts it back
+to $0. When Spent reaches the budget the OpenRouter cards stop answering, a
+note in the chat says so once, and a `/start` run ends. Raise the budget and
+they answer again. Claude keeps answering, because it uses your Claude plan,
+which this budget doesn't count. The **turn timeout** applies to every
+OpenRouter answer: when it runs out, the connection is asked to wrap up. If the
+server restarts mid-run, the run ends and a note in the chat says how far it
+got; send `/start` again.
 
 ### Brief
 
@@ -205,18 +238,23 @@ _(Claude added, not reviewed)_.
 
 ## Claude in the chat
 
-When you send a chat message, the server runs Claude Code in the background
-(`claude -p`) with only the board tools: no shell, no file access, no web.
-Claude can look at the pictures on the board. Its edits appear live and its
-answer lands in the chat. Follow-up messages continue the same conversation
-(the session id is kept in the board file). These runs use your Claude plan.
+Claude is connection 1. By default the server answers your chat messages by
+running Claude Code in the background (`claude -p`) with only the board tools:
+no shell, no file access, no web. Claude can look at the pictures on the board.
+Its edits appear live and its answer lands in the chat. Follow-up messages
+continue the same conversation (the session id is kept in the board file).
+These runs use your Claude plan.
+
+If the server can't find `claude` (or the path in `IDEA_BOARD_CLAUDE`), it
+prints a warning at startup, and the sidebar shows **not connected** with the
+command to connect a session of your own (next section). Plain messages still
+go to your OpenRouter connections.
 
 Settings (environment variables and flags):
 
 - `IDEA_BOARD_MODEL`: model for the background Claude (default: your Claude Code default)
 - `IDEA_BOARD_CLAUDE`: path to the `claude` binary
 - `IDEA_BOARD_PORT`: default port (otherwise 4777)
-- `--no-agent`: never run a background Claude; chat waits for a session (below)
 
 ## Claude from your own session (MCP)
 
@@ -239,7 +277,7 @@ Then in any Claude Code session in that project, Claude has these tools:
 
 **Live mode:** ask Claude to "listen to the board chat". It loops on
 `wait_for_chat` (a long poll), so your board messages go straight to that
-session instead of a background Claude. Each wait also lists what you
+session instead of the background Claude (the sidebar then says **via MCP**). Each wait also lists what you
 changed on the board since Claude last looked, so it can react to edits you
 didn't mention in chat. If the session stops listening for five minutes, the
 background Claude takes over again.
@@ -254,12 +292,13 @@ visit can't post to your board or set off a Claude run.
 
 ```bash
 npm install
-node server.mjs --no-agent --no-open   # the board server on 4777
+IDEA_BOARD_CLAUDE=/nonexistent node server.mjs --no-open   # the board server on 4777, no background Claude
 npm run dev                            # Vite dev server with hot reload; proxies /api, /assets and /mcp to 4777
 ```
 
-Open the URL Vite prints. `--no-agent` keeps the background Claude off while
-you work on the page; leave it out when you want to test the chat. The front end is Svelte 5 (runes), TypeScript and
+Open the URL Vite prints. Pointing `IDEA_BOARD_CLAUDE` at a missing file keeps
+the background Claude off while you work on the page; leave it out when you
+want to test the chat. The front end is Svelte 5 (runes), TypeScript and
 Tailwind 4 under `web/`; the server is plain JavaScript with no runtime
 dependencies (`lib/` and `server.mjs`).
 
