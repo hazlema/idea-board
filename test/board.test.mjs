@@ -158,7 +158,7 @@ test('an AI chat message may carry turn stats; a user message may not, and junk 
 
 test('a board saved before the turn limit existed gets the 30 minute default', () => {
   const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
-  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman' });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: '' });
 });
 
 test('user chat stores owed/to/start', () => {
@@ -204,6 +204,22 @@ test('setColabLineup keeps or sets claudeRoleId', () => {
   assert.equal(applyOp(board, { ...lineup, claudeRoleId: 'qa' }, 'user').lineup.claudeRoleId, 'qa');
   assert.equal(applyOp(board, lineup, 'user').lineup.claudeRoleId, 'qa');
   assert.throws(() => applyOp(board, { ...lineup, claudeRoleId: '' }, 'user'), OpError);
+});
+
+test('lineup keeps image and Claude models', () => {
+  const board = emptyBoard();
+  const lineup = { type: 'setColabLineup', agents: [], rounds: 3, budget: 2 };
+  assert.equal(board.colab.lineup.imageModel, '');
+  const set = applyOp(board, { ...lineup, imageModel: ' google/x-image ', claudeModel: ' opus ' }, 'user').lineup;
+  assert.equal(set.imageModel, 'google/x-image');
+  assert.equal(set.claudeModel, 'opus');
+  const kept = applyOp(board, lineup, 'user').lineup;
+  assert.equal(kept.imageModel, 'google/x-image');
+  assert.equal(kept.claudeModel, 'opus');
+  assert.throws(() => applyOp(board, { ...lineup, claudeModel: '' }, 'user'), OpError);
+  assert.throws(() => applyOp(board, { ...lineup, imageModel: 'x'.repeat(201) }, 'user'), OpError);
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.claudeModel, undefined);
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.imageModel, '');
 });
 
 test('resetColabSpent and setClaudeName', () => {

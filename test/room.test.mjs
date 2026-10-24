@@ -149,6 +149,28 @@ test('recover fills a missing Claude role from the library', () => {
   assert.equal(store.board.colab.claudeName, 'Claude · Foreman');
 });
 
+test('recover sets Claude\'s model from IDEA_BOARD_MODEL once', () => {
+  const saved = process.env.IDEA_BOARD_MODEL;
+  try {
+    process.env.IDEA_BOARD_MODEL = 'haiku';
+    const a = setup();
+    delete a.store.board.colab.lineup.claudeModel;
+    a.room.recover();
+    assert.equal(a.store.board.colab.lineup.claudeModel, 'haiku');
+    delete process.env.IDEA_BOARD_MODEL;
+    const b = setup();
+    delete b.store.board.colab.lineup.claudeModel;
+    b.room.recover();
+    assert.equal(b.store.board.colab.lineup.claudeModel, 'sonnet');
+    const c = setup();
+    c.store.board.colab.lineup.claudeModel = 'opus';
+    c.room.recover();
+    assert.equal(c.store.board.colab.lineup.claudeModel, 'opus');
+  } finally {
+    if (saved === undefined) delete process.env.IDEA_BOARD_MODEL; else process.env.IDEA_BOARD_MODEL = saved;
+  }
+});
+
 test('lineupChanged names Claude by role', () => {
   const { room, store, calls } = setup();
   store.board.colab.lineup.claudeRoleId = 'foreman';

@@ -12,6 +12,15 @@ const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'idea-boar
 const X = { id: 'agent:x/x=creative', model: 'x/x', roleId: 'creative', name: 'X · Creative', modelName: 'X', color: 'amber' };
 const Y = { id: 'agent:x/y=qa', model: 'x/y', roleId: 'qa', name: 'Y · QA', modelName: 'Y', color: 'blue' };
 
+test('a role can carry the picture permission', () => {
+  const lib = new Library(tmpFile());
+  lib.save({ rules: '', roles: [{ id: 'a', name: 'A', job: 'j', pictures: true }, { id: 'b', name: 'B', job: 'j', pictures: false }] });
+  const { roles } = lib.get();
+  assert.equal(roles[0].pictures, true);
+  assert.ok(!('pictures' in roles[1]));
+  assert.throws(() => lib.save({ rules: '', roles: [{ id: 'a', name: 'A', job: 'j', pictures: 'yes' }] }), /pictures must be true or false/);
+});
+
 test('configDir follows each platform', () => {
   assert.equal(configDir('linux', { XDG_CONFIG_HOME: '/x' }, '/h'), '/x');
   assert.equal(configDir('linux', {}, '/h'), '/h/.config');
