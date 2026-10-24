@@ -18,13 +18,14 @@ const ID_B = agentId(B.model, B.roleId);
 const presence = { attached: () => false };
 const noClaude = { via: () => 'none', takeTurn: async () => ({ ok: false, error: 'no claude' }) };
 
-function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, claude = noClaude, presence: present = presence } = {}) {
+function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   Object.assign(store.board.colab.lineup, { agents, rounds, budget });
   const calls = [];
   const openrouter = {
     hasKey: () => true,
+    ...(models && { models: async () => models }),
     complete: async (req) => {
       const { signal, ...rest } = req;
       calls.push(structuredClone(rest));
@@ -716,4 +717,49 @@ test("a card's picture spend is announced at once and counted in its turn", asyn
   await set.run.finished;
   assert.ok(Math.abs(seen - 0.15) < 1e-9, String(seen));
   assert.ok(Math.abs(chatPosts(set.store)[0].stats.cost - 0.25) < 1e-9);
+});
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+const withPicture = (store, size = 0) => {
+  const { asset } = store.assets.ingestBuffer(size ? Buffer.concat([PNG, Buffer.alloc(size)]) : PNG);
+  return store.apply({ type: 'addObject', kind: 'picture', asset, caption: 'wizard' }, 'user').object;
+};
+const lookThenDone = (id) => (req) => (thisTurn(req).some((m) => m.role === 'tool') ? text('done') : toolCall('view_picture', JSON.stringify({ id })));
+
+test('a vision card gets the picture as an image part', async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 1, models: [{ id: A.model, name: 'Alpha', vision: true }], complete: (req, n) => lookThenDone(pic.id)(req, n) });
+  const pic = withPicture(store);
+  await run.prepare();
+  kickoff(store, run);
+  await run.finished;
+  const second = calls[1].messages;
+  const image = second.at(-1).content.find((p) => p.type === 'image_url');
+  assert.match(image.image_url.url, /^data:image\/png;base64,/);
+  assert.equal(second.at(-1).role, 'user');
+  assert.equal(second.at(-1).content[0].text, 'The picture you asked to see:');
+});
+
+test("a text-only card is told it can't see images", async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 1, models: [{ id: A.model, name: 'Alpha', vision: false }], complete: (req, n) => lookThenDone(pic.id)(req, n) });
+  const pic = withPicture(store);
+  await run.prepare();
+  kickoff(store, run);
+  await run.finished;
+  const tool = calls[1].messages.findLast((m) => m.role === 'tool');
+  assert.ok(tool.content.endsWith("This model can't see images."));
+  assert.ok(!JSON.stringify(calls[1].messages).includes('data:image'));
+});
+
+test("pictures don't stay in the conversation", async () => {
+  const { store, run, calls } = setup({ agents: [A], rounds: 2, models: [{ id: A.model, name: 'Alpha', vision: true }], complete: (req, n) => (n === 1 ? lookThenDone(pic.id)(req) : n === 2 ? text('done') : text('again')) });
+  const pic = withPicture(store, 200 * 1024);
+  await run.prepare();
+  kickoff(store, run);
+  await run.finished;
+  const next = calls.at(-1).messages;
+  assert.ok(JSON.stringify(calls[1].messages).includes('data:image'));
+  const text3 = JSON.stringify(next);
+  assert.ok(text3.includes(`[picture ${pic.id} shown]`));
+  assert.ok(!text3.includes('data:image'));
+  assert.ok(text3.length < 50_000);
 });
