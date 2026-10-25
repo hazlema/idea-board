@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { OpError } from '../lib/board.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { boardPaths } from '../lib/paths.mjs';
 
@@ -122,5 +123,55 @@ test('addColabSpend and setColabSpent ignore a cost that is not a finite, non-ne
   store.setColabSpent(0);
   assert.equal(store.board.colab.spent, 0);
   store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("while pruning, Claude's ops are guarded and keep credit; the user's are not", () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  const { section } = store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'user');
+  const entry = object.entries[0];
+  store.beginPrune();
+  assert.equal(store.pruning, true);
+  const snapshot = JSON.stringify(store.board);
+  assert.throws(() => store.apply({ type: 'updateEntry', groupId: object.id, entryId: entry.id, label: 'x' }, 'claude'), OpError);
+  assert.equal(JSON.stringify(store.board), snapshot);
+  store.apply({ type: 'updateEntry', groupId: object.id, entryId: entry.id, label: 'x' }, 'user');
+  store.apply({ type: 'updateSection', id: section.id, text: 'two' }, 'claude');
+  const now = store.board.brief.sections.find((s) => s.id === section.id);
+  assert.equal(now.text, 'two');
+  assert.equal(now.updatedBy, 'user');
+  store.endPrune();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('a pass is one undo step', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const { section } = store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'user');
+  store.beginPrune();
+  store.apply({ type: 'updateSection', id: section.id, text: 'two' }, 'claude');
+  store.apply({ type: 'addSection', title: 'New', text: 'n' }, 'claude');
+  store.endPrune();
+  store.apply({ type: 'chat', text: 'done', answers: [] }, 'claude');
+  const claude = store.historyLog.entries().filter((e) => e.author === 'claude' && e.op.type !== 'chat');
+  assert.equal(claude.length, 2);
+  assert.equal(claude[0].turn, claude[1].turn);
+  store.undoTurn(claude[0].turn);
+  assert.equal(store.board.brief.sections.length, 2);
+  assert.equal(store.board.brief.sections.find((x) => x.id === section.id).text, 'one');
+  assert.ok(!store.board.brief.sections.some((x) => x.title === 'New'));
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('after endPrune nothing is guarded', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  store.beginPrune();
+  store.endPrune();
+  assert.equal(store.pruning, false);
+  store.apply({ type: 'updateEntry', groupId: object.id, entryId: object.entries[0].id, label: 'x' }, 'claude');
   fs.rmSync(dir, { recursive: true });
 });
