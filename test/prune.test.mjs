@@ -55,6 +55,11 @@ test('pruneGuard refuses changes to the law', () => {
   refuses(b, { type: 'updateEdge', id: edge.id, label: 'x' });
   refuses(b, { type: 'deleteEdge', id: edge.id });
   refuses(b, { type: 'deleteEdge', from: a.id, to: a2.id });
+  refuses(b, { type: 'ruleOut', target: { kind: 'node', id: a.id } });
+  refuses(b, { type: 'ruleOut', target: { kind: 'object', id: picture.id } });
+  refuses(b, { type: 'ruleOut', target: { kind: 'object', id: g.id } });
+  refuses(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: bullet.id } });
+  refuses(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: struck.id } });
   refuses(b, { type: 'bringBack', id: 'r_1' });
   refuses(b, { type: 'chat', text: 'hi' });
   refuses(b, { type: 'setTitle', title: 'x' });
@@ -73,6 +78,9 @@ test('pruneGuard allows what pruning needs', () => {
   allows(b, { type: 'updateSection', id: 's' , text: 'x' });
   allows(b, { type: 'deleteSection', id: 's' });
   allows(b, { type: 'ruleOut', target: { kind: 'idea' }, text: 'x' });
+  allows(b, { type: 'ruleOut', target: { kind: 'node', id: idea.id } });
+  allows(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: box.id } });
+  allows(b, { type: 'ruleOut', target: { kind: 'object', id: other.id } });
   allows(b, { type: 'deleteObject', id: other.id });
   allows(b, { type: 'deleteEdge', id: 'missing' });
 });
