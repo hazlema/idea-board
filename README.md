@@ -98,7 +98,7 @@ Thinking…, or the tool it is using). You talk to all of them in the chat.
   reorder (the order is the turn order); **✕** removes a card. Numbers are the
   positions in the sidebar when you send a message.
 - The sidebar footer holds **Rounds**, **Budget ($)**, **Turn timeout (min)**,
-  **Image model**, **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
+  **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
 - The card whose turn it is lights up, and during a run the chat header reads
   "Round 2 of 5 · <model>'s turn" with a **Stop** button.
 
@@ -121,7 +121,10 @@ A command that can't work is not sent: an unknown command, `/chat` with a
 number that has no connection (or Claude when it is not connected, or a card
 that is over budget), `/chat` or `/start` with no text, `/start` while a run
 is going, `/stop` with no run. Your text stays in the box with the reason.
-While the box starts with `/`, a line under it lists the commands.
+While the box starts with `/`, a line under it lists the commands. **↑** on
+the box's first line brings back what you sent before, as you typed it
+(commands included); **↓** goes forward again. The last 50 are kept in this
+browser.
 
 Everyone, Claude included, changes the board the same way and takes part in
 `/start` runs. Each OpenRouter connection posts in the chat as "Model · Role".
@@ -137,8 +140,10 @@ apply from the next answer.
 
 **Pictures.** A role has a **Can make pictures** checkbox in the role editor
 (for example a "Concept Art" role). Connections with such a role get a
-`generate_image` tool that draws with the **Image model** from the sidebar
-footer. The picture lands on the Brainstorm canvas marked "<name> added"
+`generate_image` tool that draws with the **Image model** set in **⋯ →
+Settings…** (a new board uses `openai/gpt-5.4-image-2`; routers such as
+`openrouter/auto` aren't offered). If the image service refuses, the error
+says which provider and what it said. The picture lands on the Brainstorm canvas marked "<name> added"
 (Keep / Dismiss). It is limited to 2 pictures per turn, and each one is paid
 from the run's budget. OpenRouter agents whose model can
 see images look at the board's pictures too. If Claude's role gains Can make

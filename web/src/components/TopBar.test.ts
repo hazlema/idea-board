@@ -7,6 +7,9 @@ vi.mock('$lib/api', () => ({
   redo: vi.fn(),
   saveVersion: vi.fn(),
   exportDoc: vi.fn(),
+  colab: vi.fn().mockResolvedValue({ status: null, hasKey: false, library: { rules: '', roles: [] }, connections: [] }),
+  colabModels: vi.fn().mockResolvedValue([]),
+  colabImageModels: vi.fn().mockResolvedValue([]),
 }));
 
 import * as api from '$lib/api';
@@ -88,4 +91,12 @@ test('the save status says Not saved while a field\'s text is unsaved, even afte
   await waitFor(() => expect(screen.getByText('Not saved')).toBeInTheDocument());
   live.markSaved(field);
   await waitFor(() => expect(screen.getByText('All changes saved')).toBeInTheDocument());
+});
+
+test('⋯ → Settings… opens the settings', async () => {
+  render(TopBar);
+  await fireEvent.click(screen.getByRole('button', { name: 'More' }));
+  await fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }));
+  expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+  expect(screen.queryByRole('menu')).toBeNull();
 });

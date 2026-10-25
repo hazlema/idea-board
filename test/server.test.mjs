@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
 import { browserCommand, parseArgs } from '../server.mjs';
+import { DEFAULT_IMAGE_MODEL } from '../lib/board.mjs';
 import { Library } from '../lib/colab/library.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 
@@ -288,7 +289,7 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
   const { factory } = colabFor();
   await withServer(async ({ base, userOp, store }) => {
     assert.equal((await userOp(LINEUP)).status, 200);
-    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30, claudeRoleId: 'foreman', imageModel: '' });
+    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL });
     assert.equal((await userOp({ ...LINEUP, turnLimit: 45 })).status, 200);
     assert.equal(store.board.colab.lineup.turnLimit, 45);
     assert.equal((await userOp({ type: 'setColabExtras', rules: 'be kind', roles: { creative: 'wild' } })).status, 200);

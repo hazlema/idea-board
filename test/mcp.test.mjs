@@ -533,7 +533,7 @@ test('generate_image without a picture maker says no image model is set, and is 
   try {
     const store = new BoardStore(path.join(dir, 'board.json'));
     const tools = createToolRunner(store, null);
-    await assert.rejects(tools.call('generate_image', { prompt: 'x' }), { message: 'No image model is set; choose one in the sidebar.' });
+    await assert.rejects(tools.call('generate_image', { prompt: 'x' }), { message: 'No image model is set; choose one in ⋯ → Settings.' });
     const batch = await tools.call('batch', { calls: [{ tool: 'generate_image', args: { prompt: 'x' } }] });
     assert.equal(batch.failed.error, "generate_image can't run inside a batch");
     store.historyLog.flush();

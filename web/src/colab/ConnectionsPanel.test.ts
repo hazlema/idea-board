@@ -112,7 +112,6 @@ test('+ Add connection opens a dialog: search, pick a model and a role, Add puts
     budget: 5,
     turnLimit: 30,
     claudeRoleId: 'creative',
-    imageModel: '',
     claudeModel: 'sonnet',
   });
 });
@@ -162,7 +161,6 @@ test('choosing models and roles on the cards sends the line-up in order', async 
     budget: 5,
     turnLimit: 30,
     claudeRoleId: 'creative',
-    imageModel: '',
     claudeModel: 'sonnet',
   });
 });
@@ -529,13 +527,15 @@ test('the popup notes MCP', async () => {
   expect(screen.getByText('Set by your session while connected via MCP.')).toBeInTheDocument();
 });
 
-test('Image model saves', async () => {
+test('the image model is not in the sidebar (it is in Settings), and the line-up leaves it alone', async () => {
   render(ConnectionsPanel);
-  await waitFor(() => expect(colabState.imageModels).not.toBeNull());
-  expect(screen.getByText('Used by roles that can make pictures.')).toBeInTheDocument();
-  await fireEvent.focus(screen.getByLabelText('Image model'));
-  await fireEvent.click(await screen.findByRole('button', { name: /Imagen 9/ }));
-  expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', imageModel: 'google/imagen-9' }));
+  await waitFor(() => expect(colabState.loaded).toBe(true));
+  expect(screen.queryByLabelText('Image model')).toBeNull();
+  await fireEvent.click(screen.getByRole('button', { name: '+ Add connection' }));
+  await fireEvent.input(screen.getByRole('searchbox', { name: 'Search models' }), { target: { value: 'sol' } });
+  await fireEvent.click(screen.getByRole('option', { name: /GPT 6.1 Sol/ }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+  expect(lastLineup()).not.toHaveProperty('imageModel');
 });
 
 test('the Claude popup stays closed once a run that started while it was open ends', async () => {

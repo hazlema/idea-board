@@ -19,7 +19,6 @@
   let budget = $state(5);
   let turnLimit = $state(30);
   let claudeRoleId = $state('foreman');
-  let imageModel = $state('');
   let claudeModel = $state('sonnet');
   let claudePopup = $state(false);
   let claudeButton = $state<HTMLButtonElement>();
@@ -36,7 +35,6 @@
       budget = lineup.budget;
       turnLimit = lineup.turnLimit ?? 30;
       claudeRoleId = lineup.claudeRoleId ?? 'foreman';
-      imageModel = lineup.imageModel ?? '';
       claudeModel = lineup.claudeModel ?? 'sonnet';
     });
   });
@@ -89,7 +87,7 @@
   const money = (n: number): string => (Number.isInteger(n) ? String(n) : n > 0 && n < 0.1 ? n.toFixed(3) : n.toFixed(2));
 
   function send(): void {
-    void live.send({ type: 'setColabLineup', agents, rounds, budget, turnLimit, claudeRoleId, imageModel, claudeModel });
+    void live.send({ type: 'setColabLineup', agents, rounds, budget, turnLimit, claudeRoleId, claudeModel });
   }
 
   function edit(index: number, patch: Partial<LineupAgent>): void {
@@ -313,21 +311,6 @@
       }}
     />
   </label>
-
-  <div class="flex flex-col gap-0.5 text-muted">
-    <span>Image model</span>
-    <ModelPicker
-      value={imageModel}
-      models={colabState.imageModels}
-      disabled={!canEdit}
-      ariaLabel="Image model"
-      onchange={(id) => {
-        imageModel = id;
-        send();
-      }}
-    />
-    <span class="text-xs">Used by roles that can make pictures.</span>
-  </div>
 
   <p class="flex items-baseline justify-between gap-2 text-muted" aria-live="polite">
     <span>Spent ${money(spent)} of ${money(status?.budget ?? budget)}</span>

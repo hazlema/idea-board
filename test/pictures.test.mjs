@@ -13,7 +13,7 @@ const A = agentId('acme/alpha', 'art');
 const B = agentId('acme/beta', 'qa');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const ROLE_COPY = 'Only roles that can make pictures can use generate_image.';
-const NO_MODEL_COPY = 'No image model is set; choose one in the sidebar.';
+const NO_MODEL_COPY = 'No image model is set; choose one in ⋯ → Settings.';
 const BUDGET_COPY = 'The budget is used up; raise it or press Reset to make pictures.';
 const LIMIT_COPY = 'Picture limit reached for this turn (2).';
 

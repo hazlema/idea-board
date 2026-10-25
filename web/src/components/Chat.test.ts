@@ -156,7 +156,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · ↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
@@ -207,4 +207,31 @@ test("an agent's note ends with what its turn took: time, cost, calls and the sh
   live.board!.chat[0].stats = { seconds: 102.4, cost: 0.0312, calls: 3, promptTokens: 40000, cachedTokens: 27000 };
   render(Chat);
   expect(screen.getByText('1 min 42 s · $0.031 · 3 calls · 68% read from cache')).toBeInTheDocument();
+});
+
+test('Up brings back earlier messages as typed, Down comes back to the empty box', async () => {
+  render(Chat);
+  const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
+  await typeAndSend('/chat 2 first');
+  await typeAndSend('/start second');
+  await waitFor(() => expect(input.value).toBe(''));
+
+  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(input.value).toBe('/start second');
+  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(input.value).toBe('/chat 2 first');
+  await waitFor(() => expect(input.selectionStart).toBe('/chat 2 first'.length));
+  await fireEvent.keyDown(input, { key: 'ArrowDown' });
+  await fireEvent.keyDown(input, { key: 'ArrowDown' });
+  expect(input.value).toBe('');
+});
+
+test('Up inside a message of several lines moves the cursor, not through history', async () => {
+  render(Chat);
+  const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
+  await typeAndSend('sent before');
+  await fireEvent.input(input, { target: { value: 'line one\nline two' } });
+  input.setSelectionRange(12, 12);
+  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(input.value).toBe('line one\nline two');
 });

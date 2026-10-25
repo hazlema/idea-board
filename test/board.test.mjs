@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OpError, applyOp, emptyBoard, migrateBoard } from '../lib/board.mjs';
+import { DEFAULT_IMAGE_MODEL, OpError, applyOp, emptyBoard, migrateBoard } from '../lib/board.mjs';
 
 test('addNode places a connected node beside its parent without overlap', () => {
   const board = emptyBoard();
@@ -158,7 +158,7 @@ test('an AI chat message may carry turn stats; a user message may not, and junk 
 
 test('a board saved before the turn limit existed gets the 30 minute default', () => {
   const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
-  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: '' });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL });
 });
 
 test('user chat stores owed/to/start', () => {
@@ -209,7 +209,7 @@ test('setColabLineup keeps or sets claudeRoleId', () => {
 test('lineup keeps image and Claude models', () => {
   const board = emptyBoard();
   const lineup = { type: 'setColabLineup', agents: [], rounds: 3, budget: 2 };
-  assert.equal(board.colab.lineup.imageModel, '');
+  assert.equal(board.colab.lineup.imageModel, DEFAULT_IMAGE_MODEL);
   const set = applyOp(board, { ...lineup, imageModel: ' google/x-image ', claudeModel: ' opus ' }, 'user').lineup;
   assert.equal(set.imageModel, 'google/x-image');
   assert.equal(set.claudeModel, 'opus');
@@ -219,7 +219,10 @@ test('lineup keeps image and Claude models', () => {
   assert.throws(() => applyOp(board, { ...lineup, claudeModel: '' }, 'user'), OpError);
   assert.throws(() => applyOp(board, { ...lineup, imageModel: 'x'.repeat(201) }, 'user'), OpError);
   assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.claudeModel, undefined);
-  assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.imageModel, '');
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.imageModel, DEFAULT_IMAGE_MODEL);
+  // A board saved with no image model chosen gets the default; clearing the field goes back to it.
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [], imageModel: '' } } }).colab.lineup.imageModel, DEFAULT_IMAGE_MODEL);
+  assert.equal(applyOp(board, { ...lineup, imageModel: '  ' }, 'user').lineup.imageModel, DEFAULT_IMAGE_MODEL);
 });
 
 test('resetColabSpent and setClaudeName', () => {

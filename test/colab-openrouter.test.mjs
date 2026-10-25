@@ -54,6 +54,15 @@ test('HTTP errors never retry and read the JSON message', async () => {
   assert.equal(calls, 1);
 });
 
+test('a provider error says which provider and what it said', async () => {
+  const raw = JSON.stringify({ error: { code: 400, message: 'Image generation is not available in your region.', status: 'FAILED_PRECONDITION' } });
+  const fetch = async () => json({ error: { code: 400, message: 'Provider returned error', metadata: { raw, provider_name: 'Google AI Studio' } } }, 400);
+  const client = new OpenRouter({ key: 'k', fetch });
+  await assert.rejects(client.complete(args), { message: 'Provider returned error (Google AI Studio: Image generation is not available in your region.)' });
+  const plain = async () => json({ error: { message: 'Provider returned error', metadata: { raw: 'upstream timed out' } } }, 502);
+  await assert.rejects(new OpenRouter({ key: 'k', fetch: plain }).complete(args), { message: 'Provider returned error (upstream timed out)' });
+});
+
 test('a non-JSON error body becomes HTTP <status>', async () => {
   const fetch = async () => ({ ok: false, status: 502, text: async () => '<html>Bad gateway</html>' });
   const client = new OpenRouter({ key: 'k', fetch });
@@ -141,6 +150,8 @@ test('imageModels lists image-output models without requiring tools, sharing one
   const data = [
     { id: 'a/paint', name: 'Paint', architecture: { output_modalities: ['image', 'text'] } },
     { id: 'b/text', supported_parameters: ['tools'], architecture: { output_modalities: ['text'] } },
+    // A router picks a model for you and has no fixed price; it is not offered for pictures.
+    { id: 'openrouter/auto', architecture: { output_modalities: ['text', 'image'] }, pricing: { prompt: '-1', completion: '-1' } },
   ];
   const client = new OpenRouter({ fetch: async () => (calls++, json({ data })) });
   assert.deepEqual((await client.imageModels()).map((m) => m.id), ['a/paint']);

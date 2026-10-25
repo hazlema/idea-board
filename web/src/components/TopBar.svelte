@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as api from '$lib/api';
   import { live, type View } from '$lib/live.svelte';
+  import SettingsDialog from './SettingsDialog.svelte';
 
   const TABS: { view: View; label: string }[] = [
     { view: 'brief', label: 'Brief' },
@@ -10,6 +11,7 @@
   ];
 
   let menuOpen = $state(false);
+  let settingsOpen = $state(false);
   let saveOpen = $state(false);
   let versionName = $state('');
 
@@ -149,8 +151,20 @@
       {#if menuOpen}
         <div class="absolute right-0 z-40 mt-1 w-48 rounded-md border border-line bg-raised py-1 shadow-lg" role="menu">
           <button class="block w-full px-3 py-1.5 text-left hover:bg-line" role="menuitem" onclick={exportDoc}>Export design doc</button>
+          <button
+            class="block w-full px-3 py-1.5 text-left hover:bg-line"
+            role="menuitem"
+            onclick={() => {
+              menuOpen = false;
+              settingsOpen = true;
+            }}>Settings…</button
+          >
         </div>
       {/if}
     </div>
   </div>
 </header>
+
+{#if settingsOpen}
+  <SettingsDialog onclose={() => (settingsOpen = false)} />
+{/if}

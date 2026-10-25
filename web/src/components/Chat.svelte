@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { tick } from 'svelte';
   import { CHAT_FONT, chatPrefs } from '$lib/chatPrefs.svelte';
+  import { chatHistory } from '$lib/chatHistory';
   import { authorColor, authorName, cardIds, isAi } from '$lib/authors';
   import * as api from '$lib/api';
   import { live } from '$lib/live.svelte';
@@ -16,7 +18,7 @@
 
   const MAX_LABEL = 200;
   const PLACEHOLDER = 'Message everyone, or /chat N to ask one… (Enter to send, Shift+Enter for a new line)';
-  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop';
+  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop · ↑ for earlier messages';
 
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);
@@ -111,6 +113,7 @@
     const text = draft.trim();
     if (!text || previewing) return;
     const context = contextFor(live.pointing);
+    chatHistory.add(text);
     draft = '';
     error = '';
     const sent = await live.chat(text, context);
@@ -121,10 +124,25 @@
     }
   }
 
+  // Up on the first line brings back what was sent before; Down on the last line comes forward.
+  async function recall(event: KeyboardEvent, box: HTMLTextAreaElement): Promise<void> {
+    const { selectionStart: start, selectionEnd: end, value } = box;
+    const up = event.key === 'ArrowUp';
+    if (start !== end || (up ? value.lastIndexOf('\n', start - 1) !== -1 : value.indexOf('\n', end) !== -1)) return;
+    const next = up ? chatHistory.older(value) : chatHistory.newer();
+    if (next === null) return;
+    event.preventDefault();
+    draft = next;
+    await tick();
+    box.setSelectionRange(next.length, next.length);
+  }
+
   function onkeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       void submit();
+    } else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+      void recall(event, event.currentTarget as HTMLTextAreaElement);
     }
   }
 </script>
@@ -203,7 +221,10 @@
     {/if}
     <textarea
       bind:value={draft}
-      oninput={() => (error = '')}
+      oninput={() => {
+        error = '';
+        chatHistory.reset();
+      }}
       {onkeydown}
       rows="2"
       placeholder={previewing ? 'Close the preview to chat' : PLACEHOLDER}
