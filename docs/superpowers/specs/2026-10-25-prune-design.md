@@ -175,3 +175,39 @@ Our calls:
 - The summary's wording.
 - Tests, including a fixture shaped like the ninjas board: duplicates across the Brief and groups,
   plain bullets, an accepted card and idea cards.
+
+## Revision after the first real run (2026-10-25, evening)
+
+**What happened.** A 20-round run on ninjas2 pruned after every round, and each pass cut only 10–15%:
+
+| Pass | Before → after |
+|---|---|
+| 1 | 65K → 55K |
+| 2 | 79K → 66K |
+| 3 | 87K → 80K |
+| 4 | 106K → 98K |
+| 5 | 119K → 111K |
+
+Agents had written 92 of the 123 entries as plain bullets, 68K characters in all. Under the law those couldn't be touched. Rounds added about 20K each, more than the 10K regrowth margin.
+
+**Decided by the host:**
+
+- **Plain bullets are no longer law,** whoever wrote them, the host included. The rule against creating plain bullets during a pass goes too. Law is now: accepted cards (and arrows between two accepted cards), struck-through entries, the ruled-out list, pictures and the chat.
+- **The pruner cuts the mechanics it finds least interesting.** "Interesting" means: what the Brief and the ticked items lean on, and what fits the game's core. Cut mechanics go on the ruled-out list with a reason starting "cut by prune:", so agents don't bring them back, and the host can Bring back one they miss. The trigger stays size-based.
+- **New ideas get a fair hearing.** Anything created since the last pass can be merged or shortened, but not cut, and a new mechanic doesn't count toward the limit until the following pass.
+- **Two settings,** under ⋯ → Settings → Pruning, saved with the board. They are there to tune from real runs:
+  - **Mechanics limit:** a whole number, or blank for no limit. Default 5. When set, a pass keeps at most that many established mechanics.
+  - **Aggressiveness:** Gentle, Normal or Aggressive. Default Normal. It changes the pruner's instructions, not any number:
+    - **Gentle:** duplicates, restatements and wording only; cut only obvious dead ends.
+    - **Normal:** that, plus cutting the weakest mechanics and stale working copies.
+    - **Aggressive:** keep only what the Brief and the kept mechanics need; cut anything not pulling its weight and tighten hard.
+- **Notes are judged too.** For each note the pruner decides whether it is still needed: if not, it deletes it; if so, it shortens it hard.
+- **The summary leads with what was kept and what was cut,** then the merge details.
+- **`view_board` drops `recent_history`.** `get_history` already exists for agents that want it.
+- **The chat catch-up shrinks.** An agent's catch-up when it starts fresh goes from the last 40 chat messages to the last 10. New messages each turn are unchanged.
+
+**Our calls:**
+
+- **What "new" means.** It means created after the board's `colab.lastPruneAt`. That is set when a pass ends, kept on the board, and isn't part of History. Group entries and Brief sections gain a `createdAt` field from now on; items without one count as old. The pass prompt lists the ids of new items.
+- **The one-pass protection lives in the prompt, not the server guard.** Merging means deleting the source, so a hard server refusal would block the merges that are allowed.
+- **Timing is unchanged** (45K threshold, 10K regrowth). We retune it after a run if passes still fire every round.
