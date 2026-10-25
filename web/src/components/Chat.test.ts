@@ -156,7 +156,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · ↑ for earlier messages')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · ↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
@@ -234,4 +234,11 @@ test('Up inside a message of several lines moves the cursor, not through history
   input.setSelectionRange(12, 12);
   await fireEvent.keyDown(input, { key: 'ArrowUp' });
   expect(input.value).toBe('line one\nline two');
+});
+
+test('an idle prune pass shows the working line', () => {
+  live.colab = { state: 'idle', round: 1, rounds: 5, current: 'claude', spent: 0, budget: 5, claude: 'binary', connections: { claude: { state: 'thinking', activity: 'pruning the board', done: [] } } };
+  render(Chat);
+  expect(screen.getByRole('status', { name: 'Working' })).toHaveTextContent('pruning the board…');
+  live.colab = null;
 });

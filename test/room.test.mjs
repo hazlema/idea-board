@@ -16,7 +16,7 @@ const ID_B = agentId(B.model, B.roleId);
 const NOTE = 'No one is connected to answer. Connect Claude (see the sidebar) or add an OpenRouter connection.';
 
 // A store with two cards on the roster, a fake agent and a fake colab that records calls.
-function setup({ via = 'binary', cards = [A, B], state = 'idle' } = {}) {
+function setup({ via = 'binary', cards = [A, B], state = 'idle', pruning = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-room-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   store.board.colab.lineup.agents = cards;
@@ -25,9 +25,10 @@ function setup({ via = 'binary', cards = [A, B], state = 'idle' } = {}) {
   const nudges = [];
   const agent = { via: () => via, nudge: () => nudges.push(1), found: via === 'binary', role: () => '' };
   const presence = { role: () => '', attached: () => via === 'mcp' };
-  const calls = { answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
+  const calls = { prune: [], answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
   const colab = {
-    status: { state },
+    status: { state, pruning },
+    prune: (o) => { calls.prune.push(o); return calls.pruneResult ?? { ok: true }; },
     ensureRoster: () => { calls.ensureRoster += 1; },
     canAnswer: (id) => (cards.some((c) => agentId(c.model, c.roleId) === id) ? { ok: true } : { ok: false, why: 'no-model' }),
     answer: (id) => calls.answer.push(id),
@@ -214,4 +215,31 @@ test('a /start the run refuses posts nothing', () => {
   assert.throws(() => room.userChat({ text: '/start go' }), (error) => error instanceof OpError && !(error instanceof ConflictError) && /Agent 2 has no model/.test(error.message));
   assert.equal(store.board.chat.length, 0);
   assert.deepEqual(calls.start, []);
+});
+
+test('/prune starts a pass and posts the request, owing nothing', () => {
+  const a = setup();
+  a.room.userChat({ text: '/prune' });
+  assert.deepEqual(a.calls.prune, [{ guidance: '' }]);
+  const m = a.store.board.chat.at(-1);
+  assert.equal(m.text, 'Prune the board.');
+  assert.deepEqual(m.owed, []);
+  const b = setup();
+  b.room.userChat({ text: '/prune the pirates' });
+  assert.deepEqual(b.calls.prune, [{ guidance: 'the pirates' }]);
+  assert.equal(b.store.board.chat.at(-1).text, 'Prune the board: the pirates');
+  assert.deepEqual(b.store.board.chat.at(-1).owed, []);
+});
+
+test('a refused /prune throws and posts nothing', () => {
+  const a = setup();
+  a.calls.pruneResult = { error: '/prune needs the claude command.' };
+  assert.throws(() => a.room.userChat({ text: '/prune' }), /\/prune needs the claude command\./);
+  assert.equal(a.store.board.chat.length, 0);
+});
+
+test('/stop while a pass runs stops it', () => {
+  const a = setup({ pruning: true });
+  assert.deepEqual(a.room.userChat({ text: '/stop' }), { stopped: true });
+  assert.equal(a.calls.stop, 1);
 });
