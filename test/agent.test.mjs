@@ -9,7 +9,7 @@ import { BoardStore } from '../lib/store.mjs';
 // A stand-in for the claude CLI: waits a moment (so a message can arrive
 // mid-run), then answers with the prompt it was given.
 const FAKE_CLAUDE = `#!/usr/bin/env node
-const prompt = process.argv[process.argv.indexOf('-p') + 1];
+const prompt = require('node:fs').readFileSync(0, 'utf8');
 setTimeout(() => process.stdout.write(JSON.stringify({ result: 'answered: ' + prompt, session_id: 's_1' })), 150);
 `;
 
@@ -219,7 +219,7 @@ test('a turn waits for a run in flight', async () => {
 
 // Answers after 2 s: a plain answer still going when a run turn comes.
 const ANSWERING_CLAUDE = `#!/usr/bin/env node
-const prompt = process.argv[process.argv.indexOf('-p') + 1];
+const prompt = require('node:fs').readFileSync(0, 'utf8');
 setTimeout(() => process.stdout.write(JSON.stringify({ result: 'answered: ' + prompt, session_id: 's_1' })), 2000);
 `;
 
@@ -322,6 +322,73 @@ process.stdout.write(JSON.stringify({ result: 'ok', session_id: 's_1' }));
   try {
     await agent.takeTurn('go', { timeoutMs: 5000 });
     assert.equal(starts, 1);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('the prompt goes to claude on stdin, not as an argument', async () => {
+  const echo = `#!/usr/bin/env node
+const prompt = require('node:fs').readFileSync(0, 'utf8');
+process.stdout.write(JSON.stringify({ result: JSON.stringify({ argv: process.argv.slice(2), prompt }), session_id: 's_1' }));
+`;
+  const { dir, store, agent } = setup(echo);
+  try {
+    const big = 'x'.repeat(200_000);
+    const got = JSON.parse((await agent.takeTurn(big, { timeoutMs: 10_000 })).text);
+    assert.equal(got.prompt, big);
+    assert.equal(got.argv[0], '-p');
+    assert.equal(got.argv[1], '--output-format');
+    assert.ok(!got.argv.some((a) => a.length > 50_000));
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('prune runs a fresh session with its own system prompt and without the chat tools', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_new' }));
+`;
+  const { dir, store, agent, idle } = setup(echo);
+  try {
+    store.setSessionId('chat-session');
+    const done = idle();
+    const result = await agent.prune('tidy', { systemPrompt: 'You prune.', timeoutMs: 5000 });
+    await done;
+    assert.equal(result.ok, true);
+    const argv = JSON.parse(result.text);
+    assert.ok(!argv.includes('--resume'));
+    assert.ok(argv.includes('--session-id'));
+    assert.notEqual(argv[argv.indexOf('--session-id') + 1], 'chat-session');
+    assert.equal(argv[argv.indexOf('--append-system-prompt') + 1], 'You prune.');
+    const denied = argv[argv.indexOf('--disallowedTools') + 1];
+    for (const name of ['generate_image', 'add_picture_from_url', 'reply', 'undo_reply', 'wait_for_chat', 'restore_version', 'save_version', 'rename_board']) {
+      assert.ok(denied.split(/[ ,]/).includes(`mcp__board__${name}`), name);
+    }
+    assert.equal(store.board.claudeSessionId, 'chat-session');
+    assert.equal(agent.running, false);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('prune waits for a chat answer in flight, and Stop cuts the wait', async () => {
+  const { dir, store, agent } = setup(`#!/usr/bin/env node
+require('node:fs').appendFileSync(__dirname + '/spawns', 'x');
+setTimeout(() => process.stdout.write(JSON.stringify({ result: 'late', session_id: 's_1' })), 3000);
+`);
+  try {
+    const first = agent.takeTurn('slow', { timeoutMs: 10_000 });
+    const ctl = new AbortController();
+    setTimeout(() => ctl.abort(), 100);
+    const result = await agent.prune('p', { systemPrompt: 's', timeoutMs: 10_000, signal: ctl.signal });
+    assert.deepEqual(result, { ok: false, error: 'stopped' });
+    assert.equal(fs.readFileSync(path.join(dir, 'spawns'), 'utf8'), 'x');
+    assert.equal(agent.running, true);
+    await first;
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

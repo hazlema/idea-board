@@ -13,7 +13,7 @@ import { connect } from '../server.mjs';
 // fails at once or answers with its prompt after `delayMs`.
 const fakeClaude = (spawns, { fail = false, delayMs = 0 } = {}) => `#!/usr/bin/env node
 require('node:fs').appendFileSync(${JSON.stringify(spawns)}, 'x\\n');
-const prompt = process.argv[process.argv.indexOf('-p') + 1];
+const prompt = require('node:fs').readFileSync(0, 'utf8');
 ${fail ? 'process.exit(1);' : `setTimeout(() => process.stdout.write(JSON.stringify({ result: 'answered: ' + prompt, session_id: 's_1' })), ${delayMs});`}
 `;
 
