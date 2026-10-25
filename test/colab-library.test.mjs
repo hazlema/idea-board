@@ -66,11 +66,11 @@ test('turnMessage shows the host and the agents by name', () => {
   assert.ok(text.endsWith('It is your turn, X · Creative.'));
 });
 
-test('turnMessage keeps only the last 40 messages', () => {
+test('turnMessage keeps only the last 10 messages', () => {
   const board = emptyBoard();
-  for (let i = 0; i < 45; i += 1) board.chat.push({ id: `m${i}`, role: 'user', text: `msg${i}`, at: '' });
+  for (let i = 0; i < 15; i += 1) board.chat.push({ id: `m${i}`, role: 'user', text: `msg${i}`, at: '' });
   const text = turnMessage(board, X);
-  assert.ok(!text.includes('msg4\n') && text.includes('Host: msg5\n'));
+  assert.ok(!text.includes('msg4\n') && text.includes('Host: msg5\n') && text.includes('Host: msg14\n'));
 });
 
 test('stripSelfTag drops only a tag naming this agent', () => {

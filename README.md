@@ -110,8 +110,10 @@ What you type decides who answers:
 | `/chat 2 What do you think?` (or `/c 2 …`) | Only connection 2 answers. The others see the message later but don't reply. |
 | `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
 | `/stop` | Ends the run after the current turn (same as **Stop**). |
-| `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording, without touching plain bullets, accepted cards, pictures, the ruled-out list or the chat. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds once the board is big. Needs the `claude` command. |
+| `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, plain bullets included, without touching accepted cards, struck-through entries, pictures, the ruled-out list or the chat. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds once the board is big. Needs the `claude` command. |
 | `//hello` | Sends `/hello` as plain text. |
+
+Pruning is tuned under **⋯ → Settings → Pruning**: a mechanics limit (blank means no limit) and how aggressive the pass is (Gentle, Normal or Aggressive). New ideas get one pass before they can be cut, and cut mechanics go on the ruled-out list with a reason starting "cut by prune:".
 
 During a run, anything you type steers it: each connection sees it on its
 next turn, and it doesn't start a round of plain answers. `/chat N` during a

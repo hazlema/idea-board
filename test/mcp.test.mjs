@@ -36,14 +36,14 @@ test('initialize reports v2 and tools/list covers the full v2 tool set', () => w
   assert.deepEqual(update.inputSchema.properties.status.enum, ['idea', 'accepted']);
 }));
 
-test('view_board shows memory first and brainstorm content', () => withServer(async ({ call, userOp }) => {
+test('view_board shows memory first and brainstorm content', () => withServer(async ({ rpc, call, userOp }) => {
   const group = (await (await userOp({ type: 'addObject', kind: 'group', title: 'Wizards', entries: [{ label: 'Staves', text: 'focus items', check: 'done' }, { label: 'Fireballs', text: 'big damage' }] })).json()).object;
   const fireballs = group.entries[1];
   await userOp({ type: 'ruleOut', target: { kind: 'entry', groupId: group.id, entryId: fireballs.id }, reason: 'too flashy' });
   await userOp({ type: 'addObject', kind: 'note', text: 'a note', x: 900, y: 0 });
   await userOp({ type: 'addObject', kind: 'topic', text: 'Magic system', x: 900, y: 300 });
   const view = await call('view_board', {});
-  assert.deepEqual(Object.keys(view), ['title', 'brief', 'ruled_out', 'brainstorm', 'flowchart', 'recent_history', 'unanswered_chat']);
+  assert.deepEqual(Object.keys(view), ['title', 'brief', 'ruled_out', 'brainstorm', 'flowchart', 'unanswered_chat']);
   assert.deepEqual(Object.keys(view.brief[0]), ['id', 'title', 'text']);
   assert.deepEqual(Object.keys(view.ruled_out[0]), ['id', 'text', 'reason', 'from', 'at']);
   assert.equal(view.ruled_out[0].reason, 'too flashy');
@@ -62,8 +62,8 @@ test('view_board shows memory first and brainstorm content', () => withServer(as
   assert.deepEqual(Object.keys(view.brainstorm.topics[0]), ['id', 'text', 'x', 'y', 'w', 'h']);
   assert.deepEqual([view.brainstorm.topics[0].x, view.brainstorm.topics[0].y], [900, 300]);
   assert.deepEqual(view.flowchart, { nodes: [], connections: [] });
-  assert.ok(view.recent_history.length <= 10);
-  assert.deepEqual(Object.keys(view.recent_history[0]), ['seq', 'author', 'summary', 'at']);
+  const tool = (await rpc('tools/list', {})).result.tools.find((t) => t.name === 'view_board');
+  assert.ok(tool.description.includes('get_history'));
 }));
 
 test('adding something close to a ruled-out idea warns Claude', () => withServer(async ({ call, userOp }) => {
