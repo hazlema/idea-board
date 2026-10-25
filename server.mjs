@@ -16,6 +16,7 @@ import { Agent } from './lib/agent.mjs';
 import { Library, libraryFile } from './lib/colab/library.mjs';
 import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
 import { ColabRun } from './lib/colab/run.mjs';
+import { Pruner } from './lib/prune.mjs';
 import { Room } from './lib/room.mjs';
 
 const HOST = '127.0.0.1';
@@ -293,7 +294,8 @@ export function connect({ store, presence, library, openrouter, pictures, agent:
     ...agentOptions,
     quiet: () => colab.status.state !== 'idle',
   });
-  colab = new ColabRun({ store, presence, claude: agent, library, openrouter, pictures });
+  const pruner = new Pruner({ store, agent });
+  colab = new ColabRun({ store, presence, claude: agent, library, openrouter, pictures, pruner });
   const room = new Room({ store, agent, presence, colab, library });
   // When a run ends, a user message the background agent held back is answered. Only the
   // run's own change to idle counts: a status re-sent while idle (the agent's work, a

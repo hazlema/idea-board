@@ -10,6 +10,7 @@ import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
+import { PRUNE_REGROW } from '../lib/prune.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -18,7 +19,7 @@ const ID_B = agentId(B.model, B.roleId);
 const presence = { attached: () => false };
 const noClaude = { via: () => 'none', takeTurn: async () => ({ ok: false, error: 'no claude' }) };
 
-function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence } = {}) {
+function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence, pruner, sizeOf } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   Object.assign(store.board.colab.lineup, { agents, rounds, budget });
@@ -32,7 +33,7 @@ function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversat
       return complete(req, calls.length);
     },
   };
-  const run = new ColabRun({ store, presence: present, claude, library: new Library(path.join(dir, 'colab.json')), openrouter, maxConversation, turnLimit, closingLimit });
+  const run = new ColabRun({ store, presence: present, claude, library: new Library(path.join(dir, 'colab.json')), openrouter, maxConversation, turnLimit, closingLimit, pruner, sizeOf });
   return { dir, store, run, calls };
 }
 
@@ -787,4 +788,195 @@ test('a step with several tool calls keeps the tool results together, pictures a
 test('generate_image reads as making a picture, then made a picture', () => {
   assert.equal(activityFor('generate_image', '{"prompt":"x"}'), 'making a picture');
   assert.equal(doneFor('generate_image', '{"prompt":"x"}'), 'made a picture');
+});
+
+// A pruner that records its calls; `run` scripts a pass (default: done at once).
+function fakePruner({ available = true, run = async () => ({ ok: true, before: 0, after: 0 }) } = {}) {
+  const calls = [];
+  return { calls, available: () => available, run: async (opts) => { calls.push(opts); return run(opts); } };
+}
+const gate = () => {
+  let open;
+  const promise = new Promise((resolve) => { open = resolve; });
+  return { promise, open };
+};
+
+test('/prune while idle runs after answers in flight finish', async () => {
+  const answering = gate();
+  const order = [];
+  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
+  const { store, run } = setup({ agents: [A], pruner, sizeOf: () => 0, turnLimit: 1234, complete: async () => { await answering.promise; order.push('answer'); return text('hello'); } });
+  run.ensureRoster();
+  hostSays(store, 'hi', { owed: [ID_A] });
+  run.answer(ID_A);
+  assert.deepEqual(run.prune({ guidance: 'keep the lore' }), { ok: true });
+  assert.deepEqual(run.prune({}), { error: 'A prune is already going.' });
+  await sleep(10);
+  assert.equal(pruner.calls.length, 0);
+  answering.open();
+  await run.settled();
+  assert.deepEqual(order, ['answer', 'prune']);
+  assert.equal(pruner.calls[0].guidance, 'keep the lore');
+  assert.equal(pruner.calls[0].timeoutMs, 1234);
+  assert.ok(pruner.calls[0].signal instanceof AbortSignal);
+  assert.equal(run.status.pruning, false);
+  assert.deepEqual(run.prune({}), { ok: true });
+  await run.settled();
+  assert.equal(pruner.calls.length, 2);
+});
+
+test('/prune is refused without the claude command', () => {
+  const { run } = setup({ pruner: fakePruner({ available: false }), complete: () => text('x') });
+  assert.deepEqual(run.prune({}), { error: '/prune needs the claude command.' });
+  const { run: bare } = setup({ complete: () => text('x') });
+  assert.deepEqual(bare.prune({}), { error: '/prune needs the claude command.' });
+});
+
+test('/prune during a run runs once, after the current round, and the run carries on', async () => {
+  const order = [];
+  let run;
+  let during;
+  const pruner = fakePruner({
+    run: async () => {
+      order.push('prune');
+      const { current, pruning, connections } = run.status;
+      during = { current, pruning, claude: { state: connections.claude.state, activity: connections.claude.activity } };
+      return { ok: true, before: 1, after: 1 };
+    },
+  });
+  const made = setup({
+    pruner,
+    sizeOf: () => 0,
+    complete: (req) => {
+      order.push(req.model);
+      if (order.length === 1) {
+        assert.deepEqual(run.prune({ guidance: 'g' }), { ok: true });
+        assert.deepEqual(run.prune({}), { error: 'A prune is already going.' });
+      }
+      return text('done');
+    },
+  });
+  run = made.run;
+  kickoff(made.store, run);
+  await run.finished;
+  assert.deepEqual(order, [A.model, B.model, 'prune', A.model, B.model]);
+  assert.deepEqual(during, { current: 'claude', pruning: true, claude: { state: 'thinking', activity: 'pruning the board' } });
+  assert.equal(pruner.calls.length, 1);
+  assert.equal(pruner.calls[0].guidance, 'g');
+  assert.equal(run.status.state, 'idle');
+  assert.equal(run.status.pruning, false);
+  assert.equal(run.status.connections.claude.state, 'waiting');
+});
+
+test(`an automatic pass runs between rounds once the board is over the threshold, and not again until it grows ${PRUNE_REGROW} more`, async () => {
+  const order = [];
+  const sizes = [50_000, 48_000, 49_000, 58_500, 50_000];
+  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
+  const { store, run } = setup({ agents: [A], rounds: 3, pruner, sizeOf: () => sizes.shift() ?? 0, complete: () => { order.push('turn'); return text('done'); } });
+  kickoff(store, run);
+  await run.finished;
+  assert.deepEqual(order, ['turn', 'prune', 'turn', 'turn', 'prune']);
+  assert.equal(pruner.calls[0].guidance, '');
+});
+
+test('Stop during a pass aborts it and ends the run', async () => {
+  // The run whose pass Stop is pressed during.
+  let target;
+  const pruner = fakePruner({
+    run: ({ signal }) => new Promise((resolve) => {
+      signal.addEventListener('abort', () => resolve({ ok: false, before: 1, after: 1 }));
+      setTimeout(() => target.stop(), 5);
+    }),
+  });
+  const { run } = setup({ pruner, sizeOf: () => 0, complete: () => text('done') });
+  target = run;
+  // While idle.
+  run.prune({});
+  await run.settled();
+  assert.equal(pruner.calls.length, 1);
+  assert.ok(pruner.calls[0].signal.aborted);
+
+  // During a run.
+  const posts = [];
+  const second = setup({
+    pruner,
+    sizeOf: () => 0,
+    complete: (req) => {
+      posts.push(req.model);
+      if (posts.length === 1) second.run.prune({});
+      return text('done');
+    },
+  });
+  target = second.run;
+  kickoff(second.store, second.run);
+  await second.run.finished;
+  assert.equal(pruner.calls.length, 2);
+  assert.ok(pruner.calls[1].signal.aborted);
+  assert.deepEqual(posts, [A.model, B.model]);
+  assert.equal(second.run.status.state, 'idle');
+  assert.equal(second.run.status.pruning, false);
+  assert.equal(second.run.status.current, null);
+});
+
+test("a card's answer waits for a pass in flight, and a run can't start during one", async () => {
+  const pass = gate();
+  const order = [];
+  const pruner = fakePruner({ run: async () => { await pass.promise; order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
+  const { store, run, calls } = setup({ agents: [A], pruner, sizeOf: () => 0, complete: () => { order.push('answer'); return text('hello'); } });
+  run.prune({});
+  await sleep(5);
+  assert.equal(pruner.calls.length, 1);
+  assert.equal(run.startError(), 'Wait for the prune to finish.');
+  run.ensureRoster();
+  hostSays(store, 'hi', { owed: [ID_A] });
+  run.answer(ID_A);
+  await sleep(10);
+  assert.equal(calls.length, 0);
+  pass.open();
+  await run.settled();
+  assert.deepEqual(order, ['prune', 'answer']);
+  assert.equal(run.startError(), null);
+});
+
+test('with no binary an automatic pass is skipped with a note, once per run', async () => {
+  const pruner = fakePruner({ available: false });
+  const { store, run } = setup({ pruner, sizeOf: () => 50_000, complete: () => text('done') });
+  const skips = () => store.board.chat.filter((m) => m.text === 'Skipped pruning: it needs the claude command.').length;
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(skips(), 1);
+  assert.equal(pruner.calls.length, 0);
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(skips(), 2);
+});
+
+test('a pass that fails to start is noted and the run is not stuck', async () => {
+  const pruner = fakePruner({ run: async () => { throw new Error('disk full'); } });
+  const { store, run } = setup({ pruner, sizeOf: () => 0, complete: () => text('done') });
+  run.prune({});
+  await run.settled();
+  assert.match(store.board.chat.at(-1).text, /disk full/);
+  assert.equal(run.status.pruning, false);
+  assert.equal(run.status.connections.claude.state, 'waiting');
+  assert.deepEqual(run.prune({}), { ok: true });
+  await run.settled();
+});
+
+test('a pass asked for in a run that ends early runs after it; after Stop it is dropped', async () => {
+  const pruner = fakePruner();
+  let run;
+  const made = setup({ budget: 0.05, pruner, sizeOf: () => 0, complete: () => { run.prune({}); return text('done'); } });
+  run = made.run;
+  kickoff(made.store, run);
+  await run.settled();
+  assert.equal(pruner.calls.length, 1);
+
+  const second = setup({ pruner, sizeOf: () => 0, complete: () => { second.run.prune({}); second.run.stop(); return text('done'); } });
+  kickoff(second.store, second.run);
+  await second.run.settled();
+  assert.equal(pruner.calls.length, 1);
+  assert.deepEqual(second.run.prune({}), { ok: true });
+  await second.run.settled();
+  assert.equal(pruner.calls.length, 2);
 });
