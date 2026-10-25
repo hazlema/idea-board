@@ -262,8 +262,11 @@ design to someone, send the `.design.md` together with the `.assets` folder.
 ## Claude in the chat
 
 Claude is connection 1. By default the server answers your chat messages by
-running Claude Code in the background (`claude -p`) with only the board tools:
-no shell, no file access, no web. Claude can look at the pictures on the board.
+running Claude Code in the background (`claude -p`) with the board tools plus
+read-only file tools (Read, Glob, Grep) limited to the board's folder, so it can
+look at the project being built there. It can't edit files, and it has no shell
+and no web. `~/.config/openrouter` is denied outright. A `/prune` pass gets no
+file tools. Claude can look at the pictures on the board.
 Its edits appear live and its answer lands in the chat. Follow-up messages
 continue the same conversation (the session id is kept in the board file).
 These runs use your Claude plan.

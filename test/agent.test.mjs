@@ -278,6 +278,25 @@ test('two turns at once run one after the other', async () => {
   }
 });
 
+const KEY_RULE = 'Read(~/.config/openrouter/**)';
+
+test('chat answers and turns may read files in the board folder; the key folder is denied', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_1' }));
+`;
+  const { dir, store, agent } = setup(echo, { canMakePictures: () => true });
+  try {
+    const argv = JSON.parse((await agent.takeTurn('go', { timeoutMs: 5000 })).text);
+    assert.equal(argv[argv.indexOf('--tools') + 1], 'Read,Glob,Grep');
+    assert.equal(argv[argv.indexOf('--allowedTools') + 1], 'mcp__board');
+    assert.equal(argv[argv.indexOf('--permission-mode') + 1], 'dontAsk');
+    assert.equal(argv[argv.indexOf('--disallowedTools') + 1], KEY_RULE);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
 test("the binary gets --disallowedTools for generate_image without the permission, and the board's model", async () => {
   const echo = `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_1' }));
@@ -287,11 +306,11 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
   try {
     const argvOf = async () => JSON.parse((await agent.takeTurn('go', { timeoutMs: 5000 })).text);
     const denied = await argvOf();
-    assert.equal(denied[denied.indexOf('--disallowedTools') + 1], 'mcp__board__generate_image');
+    assert.equal(denied[denied.indexOf('--disallowedTools') + 1], `${KEY_RULE},mcp__board__generate_image`);
     assert.equal(denied[denied.indexOf('--model') + 1], 'opus');
     allowed = true;
     const granted = await argvOf();
-    assert.ok(!granted.includes('--disallowedTools'));
+    assert.equal(granted[granted.indexOf('--disallowedTools') + 1], KEY_RULE);
     assert.equal(granted[granted.indexOf('--model') + 1], 'opus');
     store.historyLog.flush();
   } finally {
@@ -370,6 +389,8 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
     assert.ok(argv.includes('--session-id'));
     assert.notEqual(argv[argv.indexOf('--session-id') + 1], 'chat-session');
     assert.equal(argv[argv.indexOf('--append-system-prompt') + 1], 'You prune.');
+    // The pass works from the board in its prompt; it gets no file tools.
+    assert.equal(argv[argv.indexOf('--tools') + 1], '');
     const denied = argv[argv.indexOf('--disallowedTools') + 1];
     for (const name of ['generate_image', 'add_picture_from_url', 'reply', 'undo_reply', 'wait_for_chat', 'restore_version', 'save_version', 'rename_board']) {
       assert.ok(denied.split(/[ ,]/).includes(`mcp__board__${name}`), name);
