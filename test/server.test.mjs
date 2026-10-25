@@ -289,7 +289,7 @@ test('setColabLineup saves, is not in history, and rejects bad numbers', async (
   const { factory } = colabFor();
   await withServer(async ({ base, userOp, store }) => {
     assert.equal((await userOp(LINEUP)).status, 200);
-    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL });
+    assert.deepEqual(store.board.colab.lineup, { agents: [{ model: 'acme/alpha-one', roleId: 'creative' }], rounds: 2, budget: 1, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL, pruneLimit: 5, pruneAggressiveness: 'normal' });
     assert.equal((await userOp({ ...LINEUP, turnLimit: 45 })).status, 200);
     assert.equal(store.board.colab.lineup.turnLimit, 45);
     assert.equal((await userOp({ type: 'setColabExtras', rules: 'be kind', roles: { creative: 'wild' } })).status, 200);

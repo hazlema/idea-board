@@ -12,6 +12,6 @@ export function emptyBoard(): Board {
     ruledOut: [],
     chat: [],
     claudeSessionId: null,
-    colab: { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30, claudeRoleId: 'creative', imageModel: 'openai/gpt-5.4-image-2', claudeModel: 'sonnet' }, extras: { rules: '', roles: {} }, run: null, spent: 0, claudeName: 'Claude' },
+    colab: { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30, claudeRoleId: 'creative', imageModel: 'openai/gpt-5.4-image-2', claudeModel: 'sonnet', pruneLimit: 5, pruneAggressiveness: 'normal' }, extras: { rules: '', roles: {} }, run: null, spent: 0, claudeName: 'Claude', lastPruneAt: null },
   };
 }

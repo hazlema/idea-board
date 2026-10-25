@@ -208,3 +208,14 @@ test("a call carrying a stale prune token is refused, and a pass can't undo, sav
   assert.throws(() => store.apply({ type: 'addSection', title: 'X' }, 'claude', { prune }), /this prune pass has ended/);
   fs.rmSync(dir, { recursive: true });
 });
+
+test('setLastPruneAt saves without history', () => {
+  const file = path.join(tmpDir(), 'board.json');
+  const store = new BoardStore(file);
+  assert.equal(store.board.colab.lastPruneAt, null);
+  const before = store.historyLog.entries().length;
+  store.setLastPruneAt('2026-10-25T10:00:00.000Z');
+  assert.equal(store.board.colab.lastPruneAt, '2026-10-25T10:00:00.000Z');
+  assert.equal(store.historyLog.entries().length, before);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).colab.lastPruneAt, '2026-10-25T10:00:00.000Z');
+});

@@ -31,7 +31,7 @@ test('agentId joins model and role', () => {
 });
 
 test('empty and migrated boards carry an empty colab', () => {
-  const colab = { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30, claudeRoleId: 'foreman', imageModel: 'openai/gpt-5.4-image-2' }, extras: { rules: '', roles: {} }, run: null, spent: 0, claudeName: 'Claude' };
+  const colab = { roster: [], lineup: { agents: [], rounds: 5, budget: 5, turnLimit: 30, claudeRoleId: 'foreman', imageModel: 'openai/gpt-5.4-image-2', pruneLimit: 5, pruneAggressiveness: 'normal' }, extras: { rules: '', roles: {} }, run: null, spent: 0, claudeName: 'Claude', lastPruneAt: null };
   assert.deepEqual(migrateBoard({}).colab, colab);
   assert.deepEqual(emptyBoard().colab, colab);
   assert.deepEqual(migrateBoard({ colab: { roster: [ENTRY] } }).colab, { ...colab, roster: [ENTRY] });

@@ -158,7 +158,7 @@ test('an AI chat message may carry turn stats; a user message may not, and junk 
 
 test('a board saved before the turn limit existed gets the 30 minute default', () => {
   const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
-  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL, pruneLimit: 5, pruneAggressiveness: 'normal' });
 });
 
 test('user chat stores owed/to/start', () => {
@@ -232,4 +232,44 @@ test('resetColabSpent and setClaudeName', () => {
   applyOp(board, { type: 'setClaudeName', name: 'Opus' }, 'user');
   assert.equal(board.colab.spent, 0);
   assert.equal(board.colab.claudeName, 'Opus');
+});
+
+const lineupOp = (extra = {}) => ({ type: 'setColabLineup', agents: [], rounds: 3, budget: 2, ...extra });
+
+test('lineup keeps prune settings', () => {
+  const board = emptyBoard();
+  assert.equal(board.colab.lineup.pruneLimit, 5);
+  assert.equal(board.colab.lineup.pruneAggressiveness, 'normal');
+  applyOp(board, lineupOp({ pruneLimit: 3, pruneAggressiveness: 'aggressive' }), 'user');
+  assert.equal(board.colab.lineup.pruneLimit, 3);
+  assert.equal(board.colab.lineup.pruneAggressiveness, 'aggressive');
+  applyOp(board, lineupOp(), 'user');
+  assert.equal(board.colab.lineup.pruneLimit, 3);
+  assert.equal(board.colab.lineup.pruneAggressiveness, 'aggressive');
+  applyOp(board, lineupOp({ pruneLimit: null }), 'user');
+  assert.equal(board.colab.lineup.pruneLimit, null);
+  applyOp(board, lineupOp(), 'user');
+  assert.equal(board.colab.lineup.pruneLimit, null);
+  for (const bad of [0, 51, 2.5, '5']) assert.throws(() => applyOp(board, lineupOp({ pruneLimit: bad }), 'user'), OpError);
+  assert.throws(() => applyOp(board, lineupOp({ pruneAggressiveness: 'wild' }), 'user'), OpError);
+});
+
+test('migration fills the prune settings and keeps an explicit null limit', () => {
+  const colab = (lineup) => ({ ...emptyBoard(), colab: { roster: [], lineup, extras: { rules: '', roles: {} }, run: null } });
+  const filled = migrateBoard(colab({ agents: [], rounds: 3, budget: 2 }));
+  assert.equal(filled.colab.lineup.pruneLimit, 5);
+  assert.equal(filled.colab.lineup.pruneAggressiveness, 'normal');
+  assert.equal(filled.colab.lastPruneAt, null);
+  assert.equal(migrateBoard(colab({ agents: [], rounds: 3, budget: 2, pruneLimit: null })).colab.lineup.pruneLimit, null);
+});
+
+test('new entries and sections carry createdAt', () => {
+  const board = emptyBoard();
+  const iso = /^\d{4}-\d\d-\d\dT/;
+  const { section } = applyOp(board, { type: 'addSection', title: 'S' }, 'user');
+  assert.match(section.createdAt, iso);
+  const { object } = applyOp(board, { type: 'addObject', kind: 'group', title: 'G', entries: [{ label: 'a' }] }, 'user');
+  assert.match(object.entries[0].createdAt, iso);
+  const { entry } = applyOp(board, { type: 'addEntry', groupId: object.id, label: 'b' }, 'user');
+  assert.match(entry.createdAt, iso);
 });

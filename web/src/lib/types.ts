@@ -189,13 +189,15 @@ export interface RosterEntry {
 export interface Colab {
   roster: RosterEntry[];
   /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string };
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string; pruneLimit: number | null; pruneAggressiveness: 'gentle' | 'normal' | 'aggressive' };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
   /** Spend across all OpenRouter connections, until reset. */
   spent: number;
   /** How Claude (connection 1) is named in chat. */
   claudeName: string;
+  /** When the last prune pass ended, or null. */
+  lastPruneAt: string | null;
 }
 
 export interface Role {

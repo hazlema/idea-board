@@ -86,6 +86,8 @@ function withCards(count: number): void {
     claudeRoleId: 'creative',
     imageModel: '',
     claudeModel: 'sonnet',
+    pruneLimit: 5,
+    pruneAggressiveness: 'normal',
   };
   live.board = board;
 }
