@@ -384,11 +384,37 @@ setTimeout(() => process.stdout.write(JSON.stringify({ result: 'late', session_i
     const first = agent.takeTurn('slow', { timeoutMs: 10_000 });
     const ctl = new AbortController();
     setTimeout(() => ctl.abort(), 100);
-    const result = await agent.prune('p', { systemPrompt: 's', timeoutMs: 10_000, signal: ctl.signal });
+    let starts = 0;
+    const result = await agent.prune('p', { systemPrompt: 's', timeoutMs: 10_000, signal: ctl.signal, onStart: () => { starts += 1; } });
     assert.deepEqual(result, { ok: false, error: 'stopped' });
+    assert.equal(starts, 0);
     assert.equal(fs.readFileSync(path.join(dir, 'spawns'), 'utf8'), 'x');
     assert.equal(agent.running, true);
     await first;
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('prune calls onStart once the lock is free; its time limit counts from then', async () => {
+  const { dir, store, agent } = setup(`#!/usr/bin/env node
+const prompt = require('node:fs').readFileSync(0, 'utf8');
+setTimeout(() => process.stdout.write(JSON.stringify({ result: prompt, session_id: 's_1' })), prompt === 'slow' ? 400 : 0);
+`);
+  try {
+    const t0 = Date.now();
+    const first = agent.takeTurn('slow', { timeoutMs: 10_000 });
+    const seen = [];
+    // The 300 ms limit would be gone during the 400 ms wait if the wait counted.
+    const result = await agent.prune(() => 'built late', { systemPrompt: 's', timeoutMs: 300, onStart: () => seen.push(Date.now() - t0) });
+    assert.equal(seen.length, 1);
+    assert.ok(seen[0] >= 380, `onStart after the chat run (${seen[0]} ms)`);
+    assert.deepEqual(result, { ok: true, text: 'built late' });
+    assert.equal((await first).ok, true);
+    // An onStart that throws rejects the pass and frees the lock.
+    await assert.rejects(agent.prune('p', { systemPrompt: 's', onStart: () => { throw new Error('no disk'); } }), /no disk/);
+    assert.equal(agent.running, false);
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

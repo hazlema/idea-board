@@ -10,7 +10,7 @@ import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
-import { PRUNE_REGROW } from '../lib/prune.mjs';
+import { PRUNE_REGROW, Pruner } from '../lib/prune.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -979,4 +979,38 @@ test('a pass asked for in a run that ends early runs after it; after Stop it is 
   assert.deepEqual(second.run.prune({}), { ok: true });
   await second.run.settled();
   assert.equal(pruner.calls.length, 2);
+});
+
+test("an idle /prune waits for Claude's chat run in flight; its edit to a plain bullet goes through", async () => {
+  const chat = gate();
+  const order = [];
+  const claude = {
+    found: true,
+    running: false,
+    current: null,
+    via: () => 'binary',
+    takeTurn: async () => ({ ok: false, error: 'unused' }),
+    async prune(prompt, { onStart }) {
+      onStart();
+      order.push('prune');
+      return { ok: true, text: 'pruned' };
+    },
+  };
+  const { store, run } = setup({ agents: [A], claude, sizeOf: () => 0, complete: () => text('x') });
+  run.pruner = new Pruner({ store, agent: claude });
+  const group = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user').object;
+  claude.running = true;
+  claude.current = chat.promise.then(() => {
+    store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Chat edit' }, 'claude');
+    order.push('chat');
+    claude.running = false;
+  });
+  assert.deepEqual(run.prune({}), { ok: true });
+  await sleep(10);
+  assert.deepEqual(order, []);
+  chat.open();
+  await run.settled();
+  assert.deepEqual(order, ['chat', 'prune']);
+  assert.equal(store.board.brainstorm.pages[0].objects.find((o) => o.id === group.id).entries[0].label, 'Chat edit');
+  assert.equal(store.versions.list().length, 1);
 });

@@ -124,7 +124,8 @@ test('a pass saves a version first, guards the law, and posts a summary with the
     let refused = false;
     const agent = {
       found: true,
-      async prune() {
+      async prune(prompt, { onStart }) {
+        onStart();
         try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Changed' }, 'claude'); } catch { refused = true; }
         store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[1].id, label: 'B' }, 'claude');
         return { ok: true, text: 'Merged things.' };
@@ -157,7 +158,7 @@ test('the prompt carries the whole board and the guidance', () => {
 });
 
 test('a failed or stopped pass still ends the prune and says so', async () => {
-  for (const prune of [async () => ({ ok: false, error: 'stopped' }), async () => { throw new Error('stopped'); }]) {
+  for (const prune of [async (p, { onStart }) => { onStart(); return { ok: false, error: 'stopped' }; }, async (p, { onStart }) => { onStart(); throw new Error('stopped'); }]) {
     const { store, cleanup } = prunerStore();
     try {
       const result = await new Pruner({ store, agent: { found: true, prune } }).run({});
@@ -166,4 +167,43 @@ test('a failed or stopped pass still ends the prune and says so', async () => {
       assert.ok(lastChat(store).text.startsWith('Pruning was cut short (stopped).'));
     } finally { cleanup(); }
   }
+});
+
+test('a pass stopped before it got the lock saves nothing and posts nothing', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const chat = store.board.chat.length;
+    const result = await new Pruner({ store, agent: { found: true, prune: async () => ({ ok: false, error: 'stopped' }) } }).run({});
+    assert.equal(result.ok, false);
+    assert.equal(typeof result.before, 'number');
+    assert.equal(typeof result.after, 'number');
+    assert.equal(store.versions.list().length, 0);
+    assert.equal(store.board.chat.length, chat);
+    assert.equal(store.pruning, false);
+  } finally { cleanup(); }
+});
+
+test('the version is saved and the guard begins only once the agent starts, with the board as it is then', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const group = store.board.brainstorm.pages[0].objects[0];
+    let prompt = null;
+    const agent = {
+      found: true,
+      async prune(p, { onStart }) {
+        // The chat run in flight, still editing a plain bullet before the lock frees.
+        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Edited by chat' }, 'claude');
+        assert.equal(store.versions.list().length, 0);
+        assert.equal(store.pruning, false);
+        onStart();
+        assert.equal(store.pruning, true);
+        prompt = typeof p === 'function' ? p() : p;
+        return { ok: true, text: 'ok' };
+      },
+    };
+    await new Pruner({ store, agent }).run({});
+    assert.equal(group.entries[0].label, 'Edited by chat');
+    assert.ok(prompt.includes('Edited by chat'));
+    assert.equal(store.versions.list().length, 1);
+  } finally { cleanup(); }
 });
