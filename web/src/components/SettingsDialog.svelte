@@ -1,5 +1,5 @@
 <script lang="ts">
-  // ⋯ → Settings: board settings that don't need to sit in the sidebar. For now, the image model.
+  // ⋯ → Settings: board settings that don't need to sit in the sidebar. The image model and pruning.
   import { untrack } from 'svelte';
   import { live } from '$lib/live.svelte';
   import { colabState } from '../colab/colab.svelte';
@@ -28,6 +28,25 @@
   function setImageModel(id: string): void {
     if (!lineup) return;
     void live.send({ type: 'setColabLineup', ...$state.snapshot(lineup), imageModel: id });
+  }
+
+  // Pruning: sent like the image model, with the rest of the line-up.
+  function setPrune(patch: { pruneLimit?: number | null; pruneAggressiveness?: 'gentle' | 'normal' | 'aggressive' }): void {
+    if (!lineup) return;
+    void live.send({ type: 'setColabLineup', ...$state.snapshot(lineup), ...patch });
+  }
+
+  // Empty means no limit; anything else is a whole number from 1 to 50.
+  function setLimit(input: HTMLInputElement): void {
+    const n = Number(input.value);
+    if (input.value.trim() === '' || !Number.isFinite(n)) {
+      input.value = '';
+      setPrune({ pruneLimit: null });
+      return;
+    }
+    const limit = Math.min(50, Math.max(1, Math.round(n)));
+    input.value = String(limit);
+    setPrune({ pruneLimit: limit });
   }
 
   function onkeydown(event: KeyboardEvent): void {
@@ -73,6 +92,38 @@
         {/if}
       </p>
       {#if !canEdit}<p class="text-xs text-muted">Agents are running; change it when they stop.</p>{/if}
+    </section>
+
+    <section class="flex flex-col gap-1 rounded-md border border-line bg-raised p-3">
+      <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Pruning</h3>
+      <label class="flex items-center justify-between gap-2">
+        <span class="text-muted">Mechanics limit</span>
+        <input
+          type="number"
+          min="1"
+          max="50"
+          placeholder="No limit"
+          class="w-24 rounded border border-line bg-panel px-2 py-1 text-text disabled:opacity-60"
+          value={lineup?.pruneLimit ?? ''}
+          disabled={!canEdit}
+          onchange={(e) => setLimit(e.currentTarget)}
+        />
+      </label>
+      <p class="text-xs text-muted">How many established mechanics a prune keeps; the rest are cut and ruled out. New ones get one pass first.</p>
+      <label class="flex items-center justify-between gap-2">
+        <span class="text-muted">Aggressiveness</span>
+        <select
+          class="rounded border border-line bg-panel px-2 py-1 text-text disabled:opacity-60"
+          value={lineup?.pruneAggressiveness ?? 'normal'}
+          disabled={!canEdit}
+          onchange={(e) => setPrune({ pruneAggressiveness: e.currentTarget.value as 'gentle' | 'normal' | 'aggressive' })}
+        >
+          <option value="gentle">Gentle</option>
+          <option value="normal">Normal</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
+      </label>
+      <p class="text-xs text-muted">Gentle: tidy only. Normal: also cut the weakest mechanics. Aggressive: keep only what the Brief and the kept mechanics need.</p>
     </section>
   </div>
 </div>

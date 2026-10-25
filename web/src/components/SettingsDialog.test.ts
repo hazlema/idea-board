@@ -61,3 +61,40 @@ test('it is locked while agents run, and Escape closes it', async () => {
   await fireEvent.keyDown(screen.getByRole('dialog', { name: 'Settings' }), { key: 'Escape' });
   expect(onclose).toHaveBeenCalled();
 });
+
+test('Pruning: the mechanics limit saves, and clearing it means no limit', async () => {
+  render(SettingsDialog, { onclose: () => {} });
+  const input = screen.getByLabelText('Mechanics limit') as HTMLInputElement;
+  expect(input.value).toBe('5');
+  await fireEvent.change(input, { target: { value: '3' } });
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'setColabLineup', pruneLimit: 3, imageModel: 'openai/gpt-5.4-image-2' }));
+  await fireEvent.change(input, { target: { value: '99' } });
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ pruneLimit: 50 }));
+  expect(input.value).toBe('50');
+  await fireEvent.change(input, { target: { value: '0' } });
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ pruneLimit: 1 }));
+  await fireEvent.change(input, { target: { value: '' } });
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ pruneLimit: null }));
+  expect(input.value).toBe('');
+  expect(input).toHaveAttribute('placeholder', 'No limit');
+});
+
+test('Pruning: aggressiveness saves', async () => {
+  render(SettingsDialog, { onclose: () => {} });
+  const select = screen.getByLabelText('Aggressiveness') as HTMLSelectElement;
+  expect(select.value).toBe('normal');
+  expect([...select.options].map((o) => [o.value, o.text])).toEqual([
+    ['gentle', 'Gentle'],
+    ['normal', 'Normal'],
+    ['aggressive', 'Aggressive'],
+  ]);
+  await fireEvent.change(select, { target: { value: 'aggressive' } });
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'setColabLineup', pruneAggressiveness: 'aggressive' }));
+});
+
+test('Pruning is locked while agents run', () => {
+  live.colab = { ...idle, state: 'running' } as RunStatus;
+  render(SettingsDialog, { onclose: () => {} });
+  expect(screen.getByLabelText('Mechanics limit')).toBeDisabled();
+  expect(screen.getByLabelText('Aggressiveness')).toBeDisabled();
+});
