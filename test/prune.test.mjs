@@ -2,7 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyOp, emptyBoard, OpError } from '../lib/board.mjs';
 import { boardView } from '../lib/mcp-tools.mjs';
-import { PRUNE_THRESHOLD, PRUNE_REGROW, boardSize, pruneGuard, keepCredit } from '../lib/prune.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { BoardStore } from '../lib/store.mjs';
+import { PRUNE_THRESHOLD, PRUNE_REGROW, boardSize, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
 
 const A = `${'a'.repeat(32)}.png`;
 
@@ -103,4 +107,63 @@ test('keepCredit keeps authors and unmarks what the pass made', () => {
   assert.ok(made.entries.every((e) => e.claudeAdded === false));
   assert.equal(added.claudeAdded, false);
   assert.equal(node.updatedBy, 'claude');
+});
+
+function prunerStore() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }, { label: 'Box', check: 'open' }] }, 'user');
+  return { store, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+const lastChat = (store) => store.board.chat.at(-1);
+
+test('a pass saves a version first, guards the law, and posts a summary with the sizes', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const group = store.board.brainstorm.pages[0].objects[0];
+    let refused = false;
+    const agent = {
+      found: true,
+      async prune() {
+        try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Changed' }, 'claude'); } catch { refused = true; }
+        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[1].id, label: 'B' }, 'claude');
+        return { ok: true, text: 'Merged things.' };
+      },
+    };
+    const pruner = new Pruner({ store, agent });
+    assert.equal(pruner.available(), true);
+    const result = await pruner.run({ guidance: '', timeoutMs: 1000 });
+    assert.equal(result.ok, true);
+    const names = store.versions.list().map((v) => v.name);
+    assert.equal(names.length, 1);
+    assert.match(names[0], /^Before prune \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.ok(refused);
+    assert.equal(group.entries[0].label, 'Plain');
+    assert.equal(store.pruning, false);
+    const m = lastChat(store);
+    assert.equal(m.role, 'claude');
+    assert.match(m.text, /^Merged things\./);
+    assert.match(m.text, /Board size: [\d,]+ → [\d,]+ characters\./);
+  } finally { cleanup(); }
+});
+
+test('the prompt carries the whole board and the guidance', () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const p = prunePrompt(store, 'keep the wizard stuff');
+    assert.ok(p.includes(JSON.stringify(boardView(store, { fullNotes: true }))));
+    assert.ok(p.includes('keep the wizard stuff'));
+  } finally { cleanup(); }
+});
+
+test('a failed or stopped pass still ends the prune and says so', async () => {
+  for (const prune of [async () => ({ ok: false, error: 'stopped' }), async () => { throw new Error('stopped'); }]) {
+    const { store, cleanup } = prunerStore();
+    try {
+      const result = await new Pruner({ store, agent: { found: true, prune } }).run({});
+      assert.equal(result.ok, false);
+      assert.equal(store.pruning, false);
+      assert.ok(lastChat(store).text.startsWith('Pruning was cut short (stopped).'));
+    } finally { cleanup(); }
+  }
 });
