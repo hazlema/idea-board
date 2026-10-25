@@ -156,7 +156,7 @@
       style:color={turnColor}
       aria-live="polite">{status}</span
     >
-    {#if running}
+    {#if running || live.colab?.pruning || live.colab?.prunePending}
       <button
         class="shrink-0 rounded-md border border-line px-2 py-0.5 hover:bg-raised disabled:opacity-50"
         disabled={live.colab?.state === 'stopping'}

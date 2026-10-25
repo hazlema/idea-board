@@ -232,6 +232,10 @@ export interface RunStatus {
   spent: number;
   budget: number;
   claude: 'binary' | 'mcp' | 'none';
+  /** A prune pass is going. */
+  pruning?: boolean;
+  /** A prune pass is asked for or going (from /prune until it ends or is dropped). */
+  prunePending?: boolean;
   /** Per connection id ('claude' or a card id). */
   connections: Record<string, ConnectionStatus>;
 }

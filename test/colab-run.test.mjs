@@ -1014,3 +1014,75 @@ test("an idle /prune waits for Claude's chat run in flight; its edit to a plain 
   assert.equal(store.board.brainstorm.pages[0].objects.find((o) => o.id === group.id).entries[0].label, 'Chat edit');
   assert.equal(store.versions.list().length, 1);
 });
+
+test('prunePending is set from /prune until the pass ends, and a run cannot start meanwhile', async () => {
+  const answering = gate();
+  const pass = gate();
+  const pruner = fakePruner({ run: async () => { await pass.promise; return { ok: true, started: true, before: 1, after: 1 }; } });
+  const { store, run } = setup({ agents: [A], pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  const pending = [];
+  store.subscribe((e) => { if (e.type === 'colab') pending.push(e.status.prunePending); });
+  assert.equal(run.status.prunePending, false);
+  run.ensureRoster();
+  hostSays(store, 'hi', { owed: [ID_A] });
+  run.answer(ID_A);
+  run.prune({});
+  // Waiting for the answer: asked for, not yet going.
+  assert.equal(pending.at(-1), true);
+  assert.deepEqual([run.status.pruning, run.status.prunePending], [false, true]);
+  assert.equal(run.startError(), 'Wait for the prune to finish.');
+  answering.open();
+  await sleep(10);
+  assert.deepEqual([run.status.pruning, run.status.prunePending], [true, true]);
+  pass.open();
+  await run.settled();
+  assert.deepEqual([run.status.pruning, run.status.prunePending], [false, false]);
+  assert.equal(pending.at(-1), false);
+});
+
+test('a pass stopped before it starts posts "Pruning cancelled."', async () => {
+  const cancelled = (store) => store.board.chat.filter((m) => m.text === 'Pruning cancelled.');
+  // While idle, waiting for an answer in flight.
+  const answering = gate();
+  const pruner = fakePruner();
+  const idle = setup({ agents: [A], pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  idle.run.ensureRoster();
+  hostSays(idle.store, 'hi', { owed: [ID_A] });
+  idle.run.answer(ID_A);
+  idle.run.prune({});
+  idle.run.stop();
+  answering.open();
+  await idle.run.settled();
+  assert.equal(pruner.calls.length, 0);
+  const [note] = cancelled(idle.store);
+  assert.equal(note.role, 'claude');
+  assert.deepEqual(note.answers ?? [], []);
+  assert.equal(idle.run.status.prunePending, false);
+
+  // While idle, waiting for the agent's lock: the pruner says it never started.
+  const waiting = fakePruner({ run: ({ signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ ok: false, started: false, before: 1, after: 1 }))) });
+  const locked = setup({ pruner: waiting, sizeOf: () => 0, complete: () => text('x') });
+  locked.run.prune({});
+  await sleep(5);
+  locked.run.stop();
+  await locked.run.settled();
+  assert.equal(cancelled(locked.store).length, 1);
+
+  // Asked for in a run that is stopped before its round ends.
+  const inRun = setup({ pruner, sizeOf: () => 0, complete: () => { inRun.run.prune({}); inRun.run.stop(); return text('done'); } });
+  kickoff(inRun.store, inRun.run);
+  await inRun.run.settled();
+  assert.equal(cancelled(inRun.store).length, 1);
+  assert.equal(inRun.run.status.prunePending, false);
+});
+
+test('a board that shrank below the threshold prunes again once it is over it, without waiting to regrow', async () => {
+  const order = [];
+  // Over, pruned to 50,000; below (pruned by hand); then over again but under 50,000 + regrow.
+  const sizes = [50_000, 50_000, 30_000, 46_000, 46_000];
+  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
+  const { store, run } = setup({ agents: [A], rounds: 3, pruner, sizeOf: () => sizes.shift() ?? 0, complete: () => { order.push('turn'); return text('done'); } });
+  kickoff(store, run);
+  await run.finished;
+  assert.deepEqual(order, ['turn', 'prune', 'turn', 'turn', 'prune']);
+});

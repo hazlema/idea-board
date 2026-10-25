@@ -243,3 +243,12 @@ test('/stop while a pass runs stops it', () => {
   assert.deepEqual(a.room.userChat({ text: '/stop' }), { stopped: true });
   assert.equal(a.calls.stop, 1);
 });
+
+test('/stop while a pass is asked for but not started stops it; with nothing going it is refused', () => {
+  const a = setup();
+  a.colab.status = { state: 'idle', pruning: false, prunePending: true };
+  assert.deepEqual(a.room.userChat({ text: '/stop' }), { stopped: true });
+  assert.equal(a.calls.stop, 1);
+  a.colab.status = { state: 'idle', pruning: false, prunePending: false };
+  assert.throws(() => a.room.userChat({ text: '/stop' }), /No run is going\./);
+});

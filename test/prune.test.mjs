@@ -59,6 +59,11 @@ test('pruneGuard refuses changes to the law', () => {
   refuses(b, { type: 'updateEdge', id: edge.id, label: 'x' });
   refuses(b, { type: 'deleteEdge', id: edge.id });
   refuses(b, { type: 'deleteEdge', from: a.id, to: a2.id });
+  // deleteEdge matches by id or by from/to: either match is checked.
+  refuses(b, { type: 'deleteEdge', id: 'missing', from: a.id, to: a2.id });
+  refuses(b, { type: 'addEdge', from: a2.id, to: a.id });
+  refuses(b, { type: 'moveEntry', entryId: struck.id, toGroupId: s.other.id });
+  refuses(b, { type: 'moveEntry', entryId: struck.id, toGroupId: g.id, index: 0 });
   refuses(b, { type: 'ruleOut', target: { kind: 'node', id: a.id } });
   refuses(b, { type: 'ruleOut', target: { kind: 'object', id: picture.id } });
   refuses(b, { type: 'ruleOut', target: { kind: 'object', id: g.id } });
@@ -87,6 +92,8 @@ test('pruneGuard allows what pruning needs', () => {
   allows(b, { type: 'ruleOut', target: { kind: 'object', id: other.id } });
   allows(b, { type: 'deleteObject', id: other.id });
   allows(b, { type: 'deleteEdge', id: 'missing' });
+  allows(b, { type: 'addEdge', from: a.id, to: idea.id });
+  allows(b, { type: 'moveEntry', entryId: box.id, toGroupId: other.id });
 });
 
 test('keepCredit keeps authors and unmarks what the pass made', () => {
@@ -125,9 +132,11 @@ test('a pass saves a version first, guards the law, and posts a summary with the
     const agent = {
       found: true,
       async prune(prompt, { onStart }) {
-        onStart();
-        try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Changed' }, 'claude'); } catch { refused = true; }
-        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[1].id, label: 'B' }, 'claude');
+        onStart('tok');
+        assert.equal(store.pruneToken, 'tok');
+        const prune = { prune: 'tok' };
+        try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Changed' }, 'claude', prune); } catch { refused = true; }
+        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[1].id, label: 'B' }, 'claude', prune);
         return { ok: true, text: 'Merged things.' };
       },
     };
@@ -169,12 +178,22 @@ test('a failed or stopped pass still ends the prune and says so', async () => {
   }
 });
 
+test('a failed pass with no error says why it is unknown', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const result = await new Pruner({ store, agent: { found: true, prune: async (p, { onStart }) => { onStart(); return { ok: false }; } } }).run({});
+    assert.equal(result.ok, false);
+    assert.ok(lastChat(store).text.startsWith('Pruning was cut short (unknown error).'), lastChat(store).text);
+  } finally { cleanup(); }
+});
+
 test('a pass stopped before it got the lock saves nothing and posts nothing', async () => {
   const { store, cleanup } = prunerStore();
   try {
     const chat = store.board.chat.length;
     const result = await new Pruner({ store, agent: { found: true, prune: async () => ({ ok: false, error: 'stopped' }) } }).run({});
     assert.equal(result.ok, false);
+    assert.equal(result.started, false);
     assert.equal(typeof result.before, 'number');
     assert.equal(typeof result.after, 'number');
     assert.equal(store.versions.list().length, 0);

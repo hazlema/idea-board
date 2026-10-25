@@ -10,7 +10,7 @@ import { MAX_ASSET_BYTES } from './lib/assets.mjs';
 import { ConflictError, OpError } from './lib/board.mjs';
 import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
-import { createMcpHandler, createToolRunner, Presence, TOOLS } from './lib/mcp.mjs';
+import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
 import { PictureMaker } from './lib/colab/pictures.mjs';
 import { Agent } from './lib/agent.mjs';
 import { Library, libraryFile } from './lib/colab/library.mjs';
@@ -129,6 +129,10 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   // A session only sees generate_image while Claude's role can make pictures.
   const listTools = () => (pictures?.canMake('claude') ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image'));
   const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools });
+  // The prune pass's own calls (/mcp?prune=<token>): tagged with its token, without the tools
+  // it may not use, and with no presence, so the pass never touches an attached session's chat.
+  const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));
+  const pruneMcp = (token) => createMcpHandler(createToolRunner(store, null, { prune: token }), { listTools: () => pruneTools });
 
   return http.createServer(async (req, res) => {
     // Only this machine, and only this page: block DNS rebinding and
@@ -140,7 +144,8 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
     try {
       if (url.pathname === '/mcp') {
         if (req.method === 'POST') {
-          const reply = await mcp(await readBody(req));
+          const token = url.searchParams.get('prune');
+          const reply = await (token ? pruneMcp(token) : mcp)(await readBody(req));
           if (reply === null) { res.writeHead(202); return res.end(); }
           return sendJson(res, 200, reply);
         }

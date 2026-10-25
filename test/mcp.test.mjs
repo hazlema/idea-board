@@ -553,3 +553,115 @@ test("Claude's spent is announced after generate_image, and a wait_for_chat retu
   await call('wait_for_chat', { timeout_seconds: 1 });
   assert.equal((await call('generate_image', { prompt: 'c' })).error, undefined);
 }, { pictures: withPictures }));
+
+// A board with a plain bullet, a box and an earlier Claude reply (a plain bullet and a
+// ruled-out record), and a version from before all of it.
+function lawBoard() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const version = store.saveVersion('empty', 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain law' }, { label: 'Box', check: 'open' }] }, 'user');
+  store.apply({ type: 'addEntry', groupId: object.id, label: 'Agent fact' }, 'claude');
+  store.apply({ type: 'ruleOut', target: { kind: 'idea' }, text: 'no lasers', reason: 'r' }, 'claude');
+  const turn = store.historyLog.entries().at(-1).turn;
+  store.apply({ type: 'chat', text: 'done', answers: [] }, 'claude');
+  return { dir, store, version, object, turn, cleanup: () => { store.historyLog.flush(); fs.rmSync(dir, { recursive: true }); } };
+}
+
+test("the prune pass's runner can't undo, save, restore or reach its denied tools, alone or in a batch", async () => {
+  const { store, version, turn, cleanup } = lawBoard();
+  try {
+    const prune = store.beginPrune();
+    const tools = createToolRunner(store, null, { prune });
+    const snapshot = JSON.stringify(store.board);
+    const versions = store.versions.list().length;
+    for (const [tool, args] of [['undo_reply', { turn }], ['restore_version', { id: version.id }], ['save_version', { name: 'n' }], ['rename_board', { title: 't' }], ['add_picture_from_url', { url: 'http://127.0.0.1:1/x.png' }], ['reply', { text: 'hi' }]]) {
+      await assert.rejects(tools.call(tool, args), new RegExp(`${tool} isn't allowed during a prune`));
+      const batch = await tools.call('batch', { calls: [{ tool, args }] });
+      assert.deepEqual(batch.results, [], tool);
+      assert.match(batch.failed.error, /isn't allowed during a prune/, tool);
+    }
+    assert.equal(JSON.stringify(store.board), snapshot);
+    assert.equal(store.versions.list().length, versions);
+    store.endPrune();
+  } finally { cleanup(); }
+});
+
+test("the prune pass's runner is guarded by the law and keeps credit", async () => {
+  const { store, object, cleanup } = lawBoard();
+  try {
+    const prune = store.beginPrune();
+    const tools = createToolRunner(store, null, { prune });
+    const [plain, box] = object.entries;
+    await assert.rejects(tools.call('delete_entry', { entry_id: plain.id }), /plain bullets are law/);
+    const batch = await tools.call('batch', { calls: [{ tool: 'delete_entry', args: { entry_id: plain.id } }] });
+    assert.match(batch.failed.error, /plain bullets are law/);
+    const credit = (e) => ({ author: e.author, updatedBy: e.updatedBy });
+    const group = store.board.brainstorm.pages[0].objects[0];
+    const was = credit(group.entries.find((e) => e.id === box.id));
+    await tools.call('update_entry', { entry_id: box.id, label: 'Short' });
+    const now = group.entries.find((e) => e.id === box.id);
+    assert.equal(now.label, 'Short');
+    assert.deepEqual(credit(now), was);
+    assert.notEqual(was.author ?? was.updatedBy, 'claude');
+    assert.equal(group.entries.find((e) => e.id === plain.id).label, 'Plain law');
+    store.endPrune();
+  } finally { cleanup(); }
+});
+
+test('while a pass runs, any other runner can read but not change the board', async () => {
+  const { store, object, turn, cleanup } = lawBoard();
+  try {
+    store.beginPrune();
+    const session = createToolRunner(store, null);
+    const snapshot = JSON.stringify(store.board);
+    const held = /a prune is running; try again when it finishes/;
+    await assert.rejects(session.call('add_note', { text: 'x' }), held);
+    await assert.rejects(session.call('undo_reply', { turn }), held);
+    await assert.rejects(session.call('reply', { text: 'hi' }), held);
+    const batch = await session.call('batch', { calls: [{ tool: 'view_board' }, { tool: 'undo_reply', args: { turn } }] });
+    assert.equal(batch.results.length, 1);
+    assert.match(batch.failed.error, held);
+    assert.equal(JSON.stringify(store.board), snapshot);
+    assert.equal((await session.call('view_board')).title, store.board.title);
+    assert.ok(await session.call('get_history'));
+    store.endPrune();
+    await session.call('add_note', { text: 'after' });
+    assert.ok(store.board.brainstorm.pages[0].objects.some((o) => o.text === 'after'));
+    assert.ok(object);
+  } finally { cleanup(); }
+});
+
+test('a host message sent during a pass is handed to the waiting session once the pass ends', () => withServer(async ({ call, userOp, store }) => {
+  store.beginPrune();
+  const wait = call('wait_for_chat', { timeout_seconds: 5 });
+  await userOp({ type: 'chat', text: 'during the prune' });
+  let got = null;
+  wait.then((r) => { got = r; });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(got, null);
+  store.endPrune();
+  const result = await wait;
+  assert.deepEqual(result.messages.map((m) => m.text), ['during the prune']);
+}));
+
+test('/mcp?prune=<token> is the pass: guarded, tagged and without its denied tools; plain /mcp is held', () => withServer(async ({ base, call, store }) => {
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }, { label: 'Box', check: 'open' }] }, 'user');
+  const token = store.beginPrune();
+  const pruneRpc = async (method, params, t = token) => {
+    const res = await fetch(`${base}/mcp?prune=${t}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    return (await res.json()).result;
+  };
+  const names = (await pruneRpc('tools/list')).tools.map((t) => t.name);
+  for (const denied of ['reply', 'undo_reply', 'wait_for_chat', 'save_version', 'restore_version', 'rename_board', 'add_picture_from_url', 'generate_image']) assert.ok(!names.includes(denied), denied);
+  assert.ok(names.includes('batch') && names.includes('view_board'));
+  const refused = await pruneRpc('tools/call', { name: 'delete_entry', arguments: { entry_id: object.entries[0].id } });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /plain bullets are law/);
+  const ok = await pruneRpc('tools/call', { name: 'update_entry', arguments: { entry_id: object.entries[1].id, label: 'B' } });
+  assert.ok(!ok.isError);
+  const stale = await pruneRpc('tools/call', { name: 'add_note', arguments: { text: 'x' } }, 'not-the-token');
+  assert.match(stale.content[0].text, /this prune pass has ended/);
+  assert.match((await call('add_note', { text: 'x' })).error, /a prune is running/);
+  store.endPrune();
+}));

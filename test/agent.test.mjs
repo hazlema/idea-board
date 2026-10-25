@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { Agent, findOnPath } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
+import { Pruner } from '../lib/prune.mjs';
+import { boardView } from '../lib/mcp-tools.mjs';
 
 // A stand-in for the claude CLI: waits a moment (so a message can arrive
 // mid-run), then answers with the prompt it was given.
@@ -355,10 +357,15 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
   try {
     store.setSessionId('chat-session');
     const done = idle();
-    const result = await agent.prune('tidy', { systemPrompt: 'You prune.', timeoutMs: 5000 });
+    let token = null;
+    const result = await agent.prune('tidy', { systemPrompt: 'You prune.', timeoutMs: 5000, onStart: (t) => { token = t; } });
     await done;
     assert.equal(result.ok, true);
     const argv = JSON.parse(result.text);
+    // The pass reaches the board with its own token, so the server knows its calls.
+    assert.match(token, /^[0-9a-f-]{36}$/);
+    const config = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]);
+    assert.equal(config.mcpServers.board.url, `http://127.0.0.1:1/mcp?prune=${token}`);
     assert.ok(!argv.includes('--resume'));
     assert.ok(argv.includes('--session-id'));
     assert.notEqual(argv[argv.indexOf('--session-id') + 1], 'chat-session');
@@ -415,6 +422,30 @@ setTimeout(() => process.stdout.write(JSON.stringify({ result: prompt, session_i
     // An onStart that throws rejects the pass and frees the lock.
     await assert.rejects(agent.prune('p', { systemPrompt: 's', onStart: () => { throw new Error('no disk'); } }), /no disk/);
     assert.equal(agent.running, false);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test('a board over 90,000 characters reaches the claude binary whole, on stdin, through Pruner and Agent.prune', async () => {
+  const { dir, store, agent } = setup(`#!/usr/bin/env node
+const prompt = require('node:fs').readFileSync(0, 'utf8');
+require('node:fs').writeFileSync(__dirname + '/stdin.txt', prompt);
+process.stdout.write(JSON.stringify({ result: 'Pruned.', session_id: 's_p' }));
+`);
+  try {
+    for (let i = 0; i < 40; i += 1) {
+      store.apply({ type: 'addSection', title: `Section ${i}`, text: `${i} `.repeat(1200) }, 'user');
+    }
+    // The view the prompt carries, as it is once the pass starts (the version it saves is not on the board).
+    const view = JSON.stringify(boardView(store, { fullNotes: true }));
+    assert.ok(view.length > 90_000, `view is ${view.length}`);
+    const result = await new Pruner({ store, agent }).run({ timeoutMs: 10_000 });
+    assert.equal(result.ok, true);
+    const got = fs.readFileSync(path.join(dir, 'stdin.txt'), 'utf8');
+    assert.ok(got.includes(view), `the fake got ${got.length} characters`);
+    assert.match(store.board.chat.at(-1).text, /^Pruned\./);
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

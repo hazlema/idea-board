@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { emptyBoard } from '../test-board';
 
 vi.mock('$lib/api', () => {
@@ -240,5 +241,21 @@ test('an idle prune pass shows the working line', () => {
   live.colab = { state: 'idle', round: 1, rounds: 5, current: 'claude', spent: 0, budget: 5, claude: 'binary', connections: { claude: { state: 'thinking', activity: 'pruning the board', done: [] } } };
   render(Chat);
   expect(screen.getByRole('status', { name: 'Working' })).toHaveTextContent('pruning the board…');
+  live.colab = null;
+});
+
+test('a prune pass asked for or going outside a run has a Stop button', async () => {
+  const idle = { state: 'idle' as const, round: 0, rounds: 0, current: null, spent: 0, budget: 5, claude: 'binary' as const, connections: {} };
+  vi.mocked(api.stopColab).mockClear();
+  live.colab = idle;
+  render(Chat);
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+  live.colab = { ...idle, prunePending: true };
+  await tick();
+  await fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(api.stopColab).toHaveBeenCalled();
+  live.colab = { ...idle, current: 'claude', pruning: true, prunePending: true };
+  await tick();
+  expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   live.colab = null;
 });

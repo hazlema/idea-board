@@ -126,19 +126,20 @@ test('addColabSpend and setColabSpent ignore a cost that is not a finite, non-ne
   fs.rmSync(dir, { recursive: true });
 });
 
-test("while pruning, Claude's ops are guarded and keep credit; the user's are not", () => {
+test("while pruning, the pass's ops are guarded and keep credit; the user's are not", () => {
   const dir = tmpDir();
   const store = new BoardStore(path.join(dir, 'board.json'));
   const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
   const { section } = store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'user');
   const entry = object.entries[0];
-  store.beginPrune();
+  const prune = store.beginPrune('tok');
+  assert.equal(prune, 'tok');
   assert.equal(store.pruning, true);
   const snapshot = JSON.stringify(store.board);
-  assert.throws(() => store.apply({ type: 'updateEntry', groupId: object.id, entryId: entry.id, label: 'x' }, 'claude'), OpError);
+  assert.throws(() => store.apply({ type: 'updateEntry', groupId: object.id, entryId: entry.id, label: 'x' }, 'claude', { prune }), OpError);
   assert.equal(JSON.stringify(store.board), snapshot);
   store.apply({ type: 'updateEntry', groupId: object.id, entryId: entry.id, label: 'x' }, 'user');
-  store.apply({ type: 'updateSection', id: section.id, text: 'two' }, 'claude');
+  store.apply({ type: 'updateSection', id: section.id, text: 'two' }, 'claude', { prune });
   const now = store.board.brief.sections.find((s) => s.id === section.id);
   assert.equal(now.text, 'two');
   assert.equal(now.updatedBy, 'user');
@@ -173,5 +174,37 @@ test('after endPrune nothing is guarded', () => {
   store.endPrune();
   assert.equal(store.pruning, false);
   store.apply({ type: 'updateEntry', groupId: object.id, entryId: object.entries[0].id, label: 'x' }, 'claude');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("an untagged Claude op during a pass is not the pass's: no guard, no kept credit", () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  store.beginPrune('tok');
+  store.apply({ type: 'updateEntry', groupId: object.id, entryId: object.entries[0].id, label: 'x' }, 'claude');
+  const group = store.board.brainstorm.pages[0].objects[0];
+  assert.equal(group.entries[0].label, 'x');
+  assert.equal(group.updatedBy, 'claude');
+  store.endPrune();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("a call carrying a stale prune token is refused, and a pass can't undo, save or restore", () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const version = store.saveVersion('v', 'user');
+  store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'claude');
+  const turn = store.historyLog.entries().at(-1).turn;
+  const prune = store.beginPrune();
+  const snapshot = JSON.stringify(store.board);
+  assert.throws(() => store.apply({ type: 'addSection', title: 'X' }, 'claude', { prune: 'other' }), /this prune pass has ended/);
+  assert.throws(() => store.undoTurn(turn, 'claude', { prune }), /undoing a reply isn't allowed during a prune/);
+  assert.throws(() => store.saveVersion('n', 'claude', { prune }), /saving a version isn't allowed during a prune/);
+  assert.throws(() => store.restoreVersion(version.id, 'claude', { prune }), /restoring a version isn't allowed during a prune/);
+  assert.equal(JSON.stringify(store.board), snapshot);
+  assert.equal(store.versions.list().length, 1);
+  store.endPrune();
+  assert.throws(() => store.apply({ type: 'addSection', title: 'X' }, 'claude', { prune }), /this prune pass has ended/);
   fs.rmSync(dir, { recursive: true });
 });

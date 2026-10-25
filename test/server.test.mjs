@@ -433,3 +433,33 @@ test('GET /api/board says how Claude is connected and /api/colab lists the conne
     assert.deepEqual(connections.map((c) => [c.n, c.kind, c.available]), [[1, 'direct', true], [2, 'openrouter', true]]);
   }, { colab: factory });
 });
+
+test('/stop works on a /prune accepted but not started yet, and the pass says it was cancelled', async () => {
+  let release;
+  const chatRun = new Promise((resolve) => { release = resolve; });
+  const calls = [];
+  const pruner = { available: () => true, run: async (o) => { calls.push(o); return { ok: true, started: true, before: 1, after: 1 }; } };
+  // Claude's chat answer is in flight, so the pass waits for it.
+  await withServer(async ({ userOp, colab, store, agent }) => {
+    assert.equal((await userOp({ type: 'chat', text: '/prune' })).status, 200);
+    assert.equal(colab.status.prunePending, true);
+    assert.equal(colab.status.pruning, false);
+    const stop = await userOp({ type: 'chat', text: '/stop' });
+    assert.equal(stop.status, 200);
+    assert.deepEqual(await stop.json(), { stopped: true });
+    agent.running = false;
+    release();
+    await colab.settled();
+    assert.equal(calls.length, 0);
+    const note = store.board.chat.at(-1);
+    assert.equal(note.text, 'Pruning cancelled.');
+    assert.equal(note.role, 'claude');
+    assert.equal(colab.status.prunePending, false);
+    const again = await userOp({ type: 'chat', text: '/stop' });
+    assert.equal(again.status, 400);
+    assert.match((await again.json()).error, /No run is going\./);
+  }, {
+    agent: { running: true, current: chatRun },
+    colab: (store, presence, claude) => new ColabRun({ store, presence, claude, pruner, library: new Library(path.join(path.dirname(store.file), 'colab.json')), openrouter: { hasKey: () => false, models: async () => [] } }),
+  });
+});
