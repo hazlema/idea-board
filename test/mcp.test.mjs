@@ -593,9 +593,10 @@ test("the prune pass's runner is guarded by the law and keeps credit", async () 
     const prune = store.beginPrune();
     const tools = createToolRunner(store, null, { prune });
     const [plain, box] = object.entries;
-    await assert.rejects(tools.call('delete_entry', { entry_id: plain.id }), /plain bullets are law/);
+    store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: object.id, entryId: plain.id }, reason: 'no' }, 'user');
+    await assert.rejects(tools.call('delete_entry', { entry_id: plain.id }), /ruled-out entries are law/);
     const batch = await tools.call('batch', { calls: [{ tool: 'delete_entry', args: { entry_id: plain.id } }] });
-    assert.match(batch.failed.error, /plain bullets are law/);
+    assert.match(batch.failed.error, /ruled-out entries are law/);
     const credit = (e) => ({ author: e.author, updatedBy: e.updatedBy });
     const group = store.board.brainstorm.pages[0].objects[0];
     const was = credit(group.entries.find((e) => e.id === box.id));
@@ -655,9 +656,10 @@ test('/mcp?prune=<token> is the pass: guarded, tagged and without its denied too
   const names = (await pruneRpc('tools/list')).tools.map((t) => t.name);
   for (const denied of ['reply', 'undo_reply', 'wait_for_chat', 'save_version', 'restore_version', 'rename_board', 'add_picture_from_url', 'generate_image']) assert.ok(!names.includes(denied), denied);
   assert.ok(names.includes('batch') && names.includes('view_board'));
+  store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: object.id, entryId: object.entries[0].id }, reason: 'no' }, 'user');
   const refused = await pruneRpc('tools/call', { name: 'delete_entry', arguments: { entry_id: object.entries[0].id } });
   assert.equal(refused.isError, true);
-  assert.match(refused.content[0].text, /plain bullets are law/);
+  assert.match(refused.content[0].text, /ruled-out entries are law/);
   const ok = await pruneRpc('tools/call', { name: 'update_entry', arguments: { entry_id: object.entries[1].id, label: 'B' } });
   assert.ok(!ok.isError);
   const stale = await pruneRpc('tools/call', { name: 'add_note', arguments: { text: 'x' } }, 'not-the-token');

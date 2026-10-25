@@ -39,16 +39,10 @@ test('boardSize equals the view_board JSON length', () => {
 
 test('pruneGuard refuses changes to the law', () => {
   const s = sample();
-  const { b, group: g, bullet, box, struck, picture, accepted: a, accepted2: a2, idea, edge } = s;
+  const { b, group: g, struck, picture, accepted: a, accepted2: a2, idea, edge } = s;
   const e = (entry) => ({ groupId: g.id, entryId: entry.id });
-  refuses(b, { type: 'updateEntry', ...e(bullet), label: 'x' });
-  refuses(b, { type: 'updateEntry', ...e(bullet), text: 'x' });
-  refuses(b, { type: 'deleteEntry', ...e(bullet) });
-  refuses(b, { type: 'updateEntry', ...e(box), check: 'none' });
-  refuses(b, { type: 'addEntry', groupId: g.id, label: 'n' });
-  refuses(b, { type: 'addEntry', groupId: g.id, label: 'n', check: 'none' });
-  refuses(b, { type: 'addObject', kind: 'group', title: 't', entries: [{ label: 'a', check: 'open' }, { label: 'b' }] });
   refuses(b, { type: 'updateEntry', ...e(struck), text: 'x' });
+  refuses(b, { type: 'updateEntry', ...e(struck), label: 'x' });
   refuses(b, { type: 'deleteEntry', ...e(struck) });
   refuses(b, { type: 'deleteObject', id: g.id });
   refuses(b, { type: 'deleteObject', id: picture.id });
@@ -67,12 +61,31 @@ test('pruneGuard refuses changes to the law', () => {
   refuses(b, { type: 'ruleOut', target: { kind: 'node', id: a.id } });
   refuses(b, { type: 'ruleOut', target: { kind: 'object', id: picture.id } });
   refuses(b, { type: 'ruleOut', target: { kind: 'object', id: g.id } });
-  refuses(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: bullet.id } });
   refuses(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: struck.id } });
   refuses(b, { type: 'bringBack', id: 'r_1' });
   refuses(b, { type: 'chat', text: 'hi' });
   refuses(b, { type: 'setTitle', title: 'x' });
   refuses(b, { type: 'somethingNew' });
+});
+
+test('plain bullets are fair game', () => {
+  const { b, group: g, other, bullet } = sample();
+  const e = { groupId: g.id, entryId: bullet.id };
+  allows(b, { type: 'updateEntry', ...e, label: 'x' });
+  allows(b, { type: 'updateEntry', ...e, text: 'x' });
+  allows(b, { type: 'updateEntry', ...e, check: 'none' });
+  allows(b, { type: 'deleteEntry', ...e });
+  allows(b, { type: 'moveEntry', entryId: bullet.id, toGroupId: other.id });
+  allows(b, { type: 'addEntry', groupId: other.id, label: 'n' });
+  allows(b, { type: 'addEntry', groupId: other.id, label: 'n', check: 'none' });
+  allows(b, { type: 'addObject', kind: 'group', title: 't', entries: [{ label: 'a', check: 'open' }, { label: 'b' }] });
+  allows(b, { type: 'ruleOut', target: { kind: 'entry', groupId: g.id, entryId: bullet.id } });
+  const plain = applyOp(b, { type: 'addObject', kind: 'group', title: 'Plain', entries: [{ label: 'a' }, { label: 'b' }] }, 'user').object;
+  allows(b, { type: 'deleteObject', id: plain.id });
+  allows(b, { type: 'ruleOut', target: { kind: 'object', id: plain.id } });
+  // A group holding a struck entry still can't go.
+  refuses(b, { type: 'deleteObject', id: g.id });
+  refuses(b, { type: 'ruleOut', target: { kind: 'object', id: g.id } });
 });
 
 test('pruneGuard allows what pruning needs', () => {
@@ -129,14 +142,16 @@ test('a pass saves a version first, guards the law, and posts a summary with the
   try {
     const group = store.board.brainstorm.pages[0].objects[0];
     let refused = false;
+    const struck = group.entries[1];
+    store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: group.id, entryId: struck.id }, reason: 'no' }, 'user');
     const agent = {
       found: true,
       async prune(prompt, { onStart }) {
         onStart('tok');
         assert.equal(store.pruneToken, 'tok');
         const prune = { prune: 'tok' };
-        try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Changed' }, 'claude', prune); } catch { refused = true; }
-        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[1].id, label: 'B' }, 'claude', prune);
+        try { store.apply({ type: 'updateEntry', groupId: group.id, entryId: struck.id, label: 'Changed' }, 'claude', prune); } catch { refused = true; }
+        store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'B' }, 'claude', prune);
         return { ok: true, text: 'Merged things.' };
       },
     };
@@ -148,12 +163,55 @@ test('a pass saves a version first, guards the law, and posts a summary with the
     assert.equal(names.length, 1);
     assert.match(names[0], /^Before prune \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     assert.ok(refused);
-    assert.equal(group.entries[0].label, 'Plain');
+    const now = store.board.brainstorm.pages[0].objects[0].entries;
+    assert.equal(now.find((e) => e.id === struck.id).label, 'Box');
+    assert.equal(now[0].label, 'B');
     assert.equal(store.pruning, false);
     const m = lastChat(store);
     assert.equal(m.role, 'claude');
     assert.match(m.text, /^Merged things\./);
     assert.match(m.text, /Board size: [\d,]+ → [\d,]+ characters\./);
+  } finally { cleanup(); }
+});
+
+test('the prompt carries the settings and what is new', () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const group = store.board.brainstorm.pages[0].objects[0];
+    store.apply({ type: 'setColabLineup', ...store.board.colab.lineup, pruneLimit: 3, pruneAggressiveness: 'aggressive' }, 'user');
+    const first = prunePrompt(store);
+    assert.match(first, /Mechanics limit: 3/);
+    assert.match(first, /Aggressiveness: aggressive/);
+    assert.match(first, /New since the last pass: none \(this is the first pass\)/);
+    store.apply({ type: 'setColabLineup', ...store.board.colab.lineup, pruneLimit: null }, 'user');
+    assert.match(prunePrompt(store), /Mechanics limit: none/);
+    const entry = store.apply({ type: 'addEntry', groupId: group.id, label: 'Fresh', check: 'open' }, 'user').entry;
+    const section = store.apply({ type: 'addSection', title: 'Late', text: 'x' }, 'user').section;
+    // Old items carry an earlier createdAt than the pass; the new ones a later one.
+    const old = group.entries[0];
+    old.createdAt = '2000-01-01T00:00:00.000Z';
+    entry.createdAt = '2100-01-01T00:00:00.000Z';
+    section.createdAt = '2100-01-01T00:00:00.000Z';
+    store.setLastPruneAt('2050-01-01T00:00:00.000Z');
+    const p = prunePrompt(store);
+    const line = p.split('\n').find((l) => l.startsWith('New since the last pass'));
+    assert.match(line, /^New since the last pass \(don't cut these\): /);
+    assert.ok(line.includes(`entry ${entry.id}`) && line.includes(`section ${section.id}`), line);
+    assert.ok(!line.includes(old.id), line);
+    store.setLastPruneAt('2200-01-01T00:00:00.000Z');
+    assert.match(prunePrompt(store), /New since the last pass: none\n/);
+  } finally { cleanup(); }
+});
+
+test('a finished pass records lastPruneAt; a pass stopped before it starts does not', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    assert.equal(store.board.colab.lastPruneAt, null);
+    await new Pruner({ store, agent: { found: true, prune: async () => ({ ok: false, error: 'stopped' }) } }).run({});
+    assert.equal(store.board.colab.lastPruneAt, null);
+    const t0 = Date.now();
+    await new Pruner({ store, agent: { found: true, prune: async (p, { onStart }) => { onStart(); return { ok: true, text: 'ok' }; } } }).run({});
+    assert.ok(Date.parse(store.board.colab.lastPruneAt) >= t0);
   } finally { cleanup(); }
 });
 
@@ -221,7 +279,7 @@ test('the version is saved and the guard begins only once the agent starts, with
       },
     };
     await new Pruner({ store, agent }).run({});
-    assert.equal(group.entries[0].label, 'Edited by chat');
+    assert.equal(store.board.brainstorm.pages[0].objects[0].entries[0].label, 'Edited by chat');
     assert.ok(prompt.includes('Edited by chat'));
     assert.equal(store.versions.list().length, 1);
   } finally { cleanup(); }

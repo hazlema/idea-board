@@ -132,6 +132,7 @@ test("while pruning, the pass's ops are guarded and keep credit; the user's are 
   const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
   const { section } = store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'user');
   const entry = object.entries[0];
+  store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: object.id, entryId: entry.id }, reason: 'no' }, 'user');
   const prune = store.beginPrune('tok');
   assert.equal(prune, 'tok');
   assert.equal(store.pruning, true);
