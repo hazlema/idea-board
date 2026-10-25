@@ -91,7 +91,6 @@
           This is the default.
         {/if}
       </p>
-      {#if !canEdit}<p class="text-xs text-muted">Agents are running; change it when they stop.</p>{/if}
     </section>
 
     <section class="flex flex-col gap-1 rounded-md border border-line bg-raised p-3">
@@ -125,5 +124,6 @@
       </label>
       <p class="text-xs text-muted">Gentle: tidy only. Normal: also cut the weakest mechanics. Aggressive: keep only what the Brief and the kept mechanics need.</p>
     </section>
+    {#if !canEdit}<p class="text-xs text-muted">Agents are running; change these when they stop.</p>{/if}
   </div>
 </div>

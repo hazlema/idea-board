@@ -273,3 +273,14 @@ test('new entries and sections carry createdAt', () => {
   const { entry } = applyOp(board, { type: 'addEntry', groupId: object.id, label: 'b' }, 'user');
   assert.match(entry.createdAt, iso);
 });
+
+test('migrateBoard normalizes hand-edited prune settings', () => {
+  const fix = (lineup) => migrateBoard({ ...emptyBoard(), colab: { ...emptyBoard().colab, lineup: { ...emptyBoard().colab.lineup, ...lineup } } }).colab.lineup;
+  for (const bad of [0, 51, 2.5, '5', NaN]) assert.equal(fix({ pruneLimit: bad }).pruneLimit, 5);
+  assert.equal(fix({ pruneLimit: null }).pruneLimit, null);
+  assert.equal(fix({ pruneLimit: 7 }).pruneLimit, 7);
+  assert.equal(fix({ pruneAggressiveness: 'wild' }).pruneAggressiveness, 'normal');
+  assert.equal(fix({ pruneAggressiveness: 'gentle' }).pruneAggressiveness, 'gentle');
+  const b = migrateBoard({ ...emptyBoard(), colab: { ...emptyBoard().colab, lineup: { ...emptyBoard().colab.lineup, pruneLimit: 0 } } });
+  assert.doesNotThrow(() => applyOp(b, { type: 'setColabLineup', ...b.colab.lineup }, 'user'));
+});

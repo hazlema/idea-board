@@ -57,7 +57,8 @@ test('it is locked while agents run, and Escape closes it', async () => {
   const onclose = vi.fn();
   render(SettingsDialog, { onclose });
   expect(screen.getByLabelText('Image model')).toBeDisabled();
-  expect(screen.getByText(/Agents are running/)).toBeInTheDocument();
+  expect(screen.getAllByText('Agents are running; change these when they stop.')).toHaveLength(1);
+  expect(screen.getByLabelText('Mechanics limit')).toBeDisabled();
   await fireEvent.keyDown(screen.getByRole('dialog', { name: 'Settings' }), { key: 'Escape' });
   expect(onclose).toHaveBeenCalled();
 });

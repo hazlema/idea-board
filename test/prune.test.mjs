@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
-import { PRUNE_THRESHOLD, PRUNE_REGROW, boardSize, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
+import { PRUNE_SYSTEM_PROMPT, PRUNE_THRESHOLD, PRUNE_REGROW, boardSize, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
 
 const A = `${'a'.repeat(32)}.png`;
 
@@ -198,6 +198,16 @@ test('the prompt carries the settings and what is new', () => {
     assert.match(line, /^New since the last pass \(don't cut these\): /);
     assert.ok(line.includes(`entry ${entry.id}`) && line.includes(`section ${section.id}`), line);
     assert.ok(!line.includes(old.id), line);
+    // Long multi-line notes stay one short line; struck entries and pictures are not listed.
+    const note = store.apply({ type: 'addObject', kind: 'note', x: 0, y: 0, text: `first line\n\n${'word '.repeat(40)}` }, 'user').object;
+    const struck = store.apply({ type: 'addEntry', groupId: group.id, label: 'Struck', check: 'open' }, 'user').entry;
+    store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: group.id, entryId: struck.id }, reason: 'no' }, 'user');
+    const pic = store.apply({ type: 'addObject', kind: 'picture', asset: 'a'.repeat(32) + '.png', caption: 'sketch', x: 0, y: 300 }, 'user').object;
+    for (const x of [note, struck, pic]) x.createdAt = '2100-01-01T00:00:00.000Z';
+    const line2 = prunePrompt(store).split('\n').find((l) => l.startsWith('New since the last pass'));
+    assert.ok(line2.includes(note.id) && line2.includes('first line word'), line2);
+    assert.ok(line2.includes('…') && !line2.includes('word word word word word word word word word word word word word word'), line2);
+    assert.ok(!line2.includes(struck.id) && !line2.includes(pic.id), line2);
     store.setLastPruneAt('2200-01-01T00:00:00.000Z');
     assert.match(prunePrompt(store), /New since the last pass: none\n/);
   } finally { cleanup(); }
@@ -210,8 +220,10 @@ test('a finished pass records lastPruneAt; a pass stopped before it starts does 
     await new Pruner({ store, agent: { found: true, prune: async () => ({ ok: false, error: 'stopped' }) } }).run({});
     assert.equal(store.board.colab.lastPruneAt, null);
     const t0 = Date.now();
-    await new Pruner({ store, agent: { found: true, prune: async (p, { onStart }) => { onStart(); return { ok: true, text: 'ok' }; } } }).run({});
-    assert.ok(Date.parse(store.board.colab.lastPruneAt) >= t0);
+    let atStart;
+    await new Pruner({ store, agent: { found: true, prune: async (p, { onStart }) => { onStart(); atStart = store.board.colab.lastPruneAt; return { ok: true, text: 'ok' }; } } }).run({});
+    assert.ok(Date.parse(atStart) >= t0, 'stamped when the pass starts');
+    assert.equal(store.board.colab.lastPruneAt, atStart);
   } finally { cleanup(); }
 });
 
@@ -283,4 +295,10 @@ test('the version is saved and the guard begins only once the agent starts, with
     assert.ok(prompt.includes('Edited by chat'));
     assert.equal(store.versions.list().length, 1);
   } finally { cleanup(); }
+});
+
+test('the prompt tells the agent how to cut a mechanic with rule_out', () => {
+  assert.match(PRUNE_SYSTEM_PROMPT, /rule_out with kind "object"/);
+  assert.match(PRUNE_SYSTEM_PROMPT, /rule_out kind "idea"/);
+  assert.match(PRUNE_SYSTEM_PROMPT, /Never use rule_out on single entries or cards/);
 });
