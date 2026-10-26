@@ -150,6 +150,16 @@ test('Final audit shows the default text, editing saves passes.audit, and Reset 
   expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: {} });
 });
 
+test('Editing the text back to the default stores nothing', async () => {
+  colabState.passDefaults = { audit: 'Default audit.', prune: 'Default prune.' };
+  colabState.library = { ...library(), passes: { audit: 'Mine' } };
+  render(RoleEditor, { onclose: () => {} });
+  await open('Final audit');
+  await fireEvent.input(screen.getByLabelText('Instructions, every board'), { target: { value: '  Default audit.\n' } });
+  await vi.advanceTimersByTimeAsync(600);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: {} });
+});
+
 test('the Prune pane keeps the audit text and names /prune', async () => {
   colabState.passDefaults = { audit: 'A', prune: 'Default prune.' };
   colabState.library = { ...library(), passes: { audit: 'Mine' } };

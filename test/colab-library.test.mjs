@@ -90,6 +90,7 @@ test('passes are optional, saved only when non-blank, and checked', () => {
   const roles = [{ id: 'a', name: 'A', job: 'j' }];
   assert.deepEqual(lib.save({ rules: '', roles, passes: { audit: 'Check X', prune: '   ' } }).passes, { audit: 'Check X' });
   assert.throws(() => lib.save({ rules: '', roles, passes: { other: 'x' } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, passes: { constructor: 'x' } }), OpError);
   assert.throws(() => lib.save({ rules: '', roles, passes: { audit: 'x'.repeat(20001) } }), OpError);
   assert.ok(!('passes' in lib.save({ rules: '', roles })));
   assert.ok(!('passes' in lib.save({ rules: '', roles, passes: { audit: ' ' } })));

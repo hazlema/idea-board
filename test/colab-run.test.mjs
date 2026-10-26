@@ -1199,6 +1199,9 @@ test('audit is refused during a run, while one is going, and with no auditor', a
   const { store, run } = setup({ agents: [A], rounds: 1, claude, complete: () => text('done') });
   kickoff(store, run);
   assert.deepEqual(run.audit({}), { error: 'The run ends with an audit.' });
+  run.stop();
+  assert.equal(run.status.state, 'stopping');
+  assert.deepEqual(run.audit({}), { error: 'Wait for the run to stop.' });
   await run.finished;
   assert.deepEqual(run.audit({}), { ok: true, by: 'Claude' });
   assert.deepEqual(run.audit({}), { error: 'An audit is already going.' });
@@ -1207,6 +1210,41 @@ test('audit is refused during a run, while one is going, and with no auditor', a
   await run.settled();
   const bare = setup({ agents: [A], complete: () => text('x') });
   assert.deepEqual(bare.run.audit({}), { error: 'No one can audit: give a connection the Foreman role, or install the claude command.' });
+});
+
+test('a card auditor that runs out of time does not claim changes on the board', async () => {
+  const { store, run } = setup({ agents: [F], turnLimit: 30, closingLimit: 30, complete: hang });
+  run.audit({});
+  await run.settled();
+  assert.match(store.board.chat.at(-1).text, /^\(out of time after \d+ min\)$/);
+});
+
+test('Stop cuts a card auditor short', async () => {
+  const started = gate();
+  const { store, run } = setup({ agents: [F], complete: (req) => { started.open(); return hang(req); } });
+  run.audit({});
+  await started.promise;
+  run.stop();
+  await run.settled();
+  assert.equal(store.board.chat.at(-1).text, '(stopped partway through my turn)');
+  assert.equal(run.status.state, 'idle');
+  assert.equal(run.status.auditing, false);
+});
+
+test('an /audit stopped while waiting for a prune says "Audit cancelled."', async () => {
+  const answering = gate();
+  const claude = auditingClaude();
+  const { store, run } = setup({ agents: [A], claude, pruner: fakePruner(), sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  run.ensureRoster();
+  hostSays(store, 'hi', { owed: [ID_A] });
+  run.answer(ID_A);
+  run.prune({});
+  run.audit({});
+  run.stop();
+  answering.open();
+  await run.settled();
+  assert.equal(claude.calls.length, 0);
+  assert.equal(store.board.chat.filter((m) => m.text === 'Audit cancelled.').length, 1);
 });
 
 test('the Foreman card over budget falls back to Claude', async () => {

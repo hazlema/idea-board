@@ -250,7 +250,7 @@ export interface RunStatus {
   pruning?: boolean;
   /** A prune pass is asked for or going (from /prune until it ends or is dropped). */
   prunePending?: boolean;
-  /** The final audit pass is going. */
+  /** An audit is going: the final audit of a run, or an /audit. */
   auditing?: boolean;
   /** Per connection id ('claude' or a card id). */
   connections: Record<string, ConnectionStatus>;

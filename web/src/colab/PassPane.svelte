@@ -16,7 +16,12 @@
 
   const text = new Draft({
     server: () => stored || colabState.passDefaults[name],
-    save: async (value) => ((await save({ ...colabState.library, passes: { ...colabState.library.passes, [name]: value } })) ? {} : null),
+    // Text equal to the default is stored as nothing, so later default improvements still reach the host.
+    save: async (value) => {
+      const { [name]: _old, ...rest } = colabState.library.passes ?? {};
+      const same = value.trim() === colabState.passDefaults[name].trim();
+      return (await save({ ...colabState.library, passes: same ? rest : { ...rest, [name]: value } })) ? {} : null;
+    },
     delay: 500,
   });
 
