@@ -8,7 +8,7 @@ import { withServer } from './helpers.mjs';
 import { browserCommand, parseArgs } from '../server.mjs';
 import { DEFAULT_IMAGE_MODEL } from '../lib/board.mjs';
 import { Library } from '../lib/colab/library.mjs';
-import { DEFAULT_AUDIT_TEXT } from '../lib/audit.mjs';
+import { AUDIT_TOOLS, DEFAULT_AUDIT_TEXT } from '../lib/audit.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 
 test('MCP initialize and tools/list', () => withServer(async ({ rpc }) => {
@@ -474,3 +474,14 @@ test('the library carries pass texts, and /api/colab lists their defaults', asyn
     assert.deepEqual((await res.json()).library.passes, { audit: 'A' });
   }, { colab: factory });
 });
+
+test('/mcp?audit=1 lists only the audit tools and refuses changes', () => withServer(async ({ base, store }) => {
+  const post = async (method, params) => (await fetch(`${base}/mcp?audit=1`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json();
+  const list = await post('tools/list', {});
+  assert.deepEqual(list.result.tools.map((t) => t.name).sort(), [...AUDIT_TOOLS].sort());
+  const before = JSON.stringify(store.board);
+  const reply = await post('tools/call', { name: 'add_group', arguments: { title: 'x' } });
+  assert.equal(reply.result.isError, true);
+  assert.match(reply.result.content[0].text, /isn't allowed during an audit/);
+  assert.equal(JSON.stringify(store.board), before);
+}));

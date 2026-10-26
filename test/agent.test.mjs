@@ -403,6 +403,36 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
   }
 });
 
+test('audit runs a fresh read-only session with file tools', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_new' }));
+`;
+  const { dir, store, agent, idle } = setup(echo);
+  try {
+    store.setSessionId('chat-session');
+    const done = idle();
+    const result = await agent.audit('check', { systemPrompt: 'You audit.', timeoutMs: 5000 });
+    await done;
+    assert.equal(result.ok, true);
+    const argv = JSON.parse(result.text);
+    const config = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]);
+    assert.equal(config.mcpServers.board.url, 'http://127.0.0.1:1/mcp?audit=1');
+    assert.equal(argv[argv.indexOf('--tools') + 1], 'Read,Glob,Grep');
+    const denied = argv[argv.indexOf('--disallowedTools') + 1].split(/[ ,]/);
+    assert.ok(denied.includes('mcp__board__add_group'));
+    assert.ok(denied.includes('Read(~/.config/openrouter/**)'));
+    assert.ok(!denied.includes('mcp__board__view_board'));
+    assert.equal(argv[argv.indexOf('--append-system-prompt') + 1], 'You audit.');
+    assert.ok(!argv.includes('--resume'));
+    assert.ok(argv.includes('--session-id'));
+    assert.equal(store.board.claudeSessionId, 'chat-session');
+    assert.equal(agent.running, false);
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
 test('prune waits for a chat answer in flight, and Stop cuts the wait', async () => {
   const { dir, store, agent } = setup(`#!/usr/bin/env node
 require('node:fs').appendFileSync(__dirname + '/spawns', 'x');

@@ -667,3 +667,14 @@ test('/mcp?prune=<token> is the pass: guarded, tagged and without its denied too
   assert.match((await call('add_note', { text: 'x' })).error, /a prune is running/);
   store.endPrune();
 }));
+
+test("a read-only runner reads but can't change the board", () => withServer(async ({ store }) => {
+  const tools = createToolRunner(store, null, { readOnly: true });
+  await tools.call('view_board', {});
+  const before = JSON.stringify(store.board);
+  await assert.rejects(tools.call('add_group', { title: 'x' }), /isn't allowed during an audit/);
+  const batch = await tools.call('batch', { calls: [{ tool: 'view_board' }, { tool: 'add_group', args: { title: 'x' } }] });
+  assert.equal(batch.failed.index, 1);
+  assert.match(batch.failed.error, /isn't allowed during an audit/);
+  assert.equal(JSON.stringify(store.board), before);
+}));

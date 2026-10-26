@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_ASSET_BYTES } from './lib/assets.mjs';
 import { ConflictError, OpError } from './lib/board.mjs';
+import { AUDIT_TOOLS } from './lib/audit.mjs';
 import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
@@ -134,6 +135,10 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));
   const pruneMcp = (token) => createMcpHandler(createToolRunner(store, null, { prune: token }), { listTools: () => pruneTools });
 
+  // The audit's calls (/mcp?audit=1): read-only, and only the tools it may use.
+  const auditTools = TOOLS.filter((t) => AUDIT_TOOLS.has(t.name));
+  const auditMcp = createMcpHandler(createToolRunner(store, null, { readOnly: true }), { listTools: () => auditTools });
+
   return http.createServer(async (req, res) => {
     // Only this machine, and only this page: block DNS rebinding and
     // cross-site requests from other tabs.
@@ -145,7 +150,7 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
       if (url.pathname === '/mcp') {
         if (req.method === 'POST') {
           const token = url.searchParams.get('prune');
-          const reply = await (token ? pruneMcp(token) : mcp)(await readBody(req));
+          const reply = await (token ? pruneMcp(token) : url.searchParams.get('audit') === '1' ? auditMcp : mcp)(await readBody(req));
           if (reply === null) { res.writeHead(202); return res.end(); }
           return sendJson(res, 200, reply);
         }
