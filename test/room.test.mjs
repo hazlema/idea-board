@@ -25,9 +25,10 @@ function setup({ via = 'binary', cards = [A, B], state = 'idle', pruning = false
   const nudges = [];
   const agent = { via: () => via, nudge: () => nudges.push(1), found: via === 'binary', role: () => '' };
   const presence = { role: () => '', attached: () => via === 'mcp' };
-  const calls = { prune: [], answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
+  const calls = { audit: [], prune: [], answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
   const colab = {
     status: { state, pruning },
+    audit: (o) => { calls.audit.push(o); return calls.auditResult ?? { ok: true, by: 'Claude' }; },
     prune: (o) => { calls.prune.push(o); return calls.pruneResult ?? { ok: true }; },
     ensureRoster: () => { calls.ensureRoster += 1; },
     canAnswer: (id) => (cards.some((c) => agentId(c.model, c.roleId) === id) ? { ok: true } : { ok: false, why: 'no-model' }),
@@ -251,4 +252,32 @@ test('/stop while a pass is asked for but not started stops it; with nothing goi
   assert.equal(a.calls.stop, 1);
   a.colab.status = { state: 'idle', pruning: false, prunePending: false };
   assert.throws(() => a.room.userChat({ text: '/stop' }), /No run is going\./);
+});
+
+test('/audit starts a pass and posts the request, owing nothing', () => {
+  const a = setup();
+  a.room.userChat({ text: '/audit' });
+  assert.deepEqual(a.calls.audit, [{ focus: '' }]);
+  assert.equal(a.store.board.chat.at(-1).text, 'Audit the board.');
+  assert.deepEqual(a.store.board.chat.at(-1).owed, []);
+  const b = setup();
+  b.room.userChat({ text: '/audit the rules' });
+  assert.deepEqual(b.calls.audit, [{ focus: 'the rules' }]);
+  assert.equal(b.store.board.chat.at(-1).text, 'Audit the board: the rules');
+  assert.equal(b.store.board.chat.at(-1).role, 'user');
+  assert.deepEqual(b.store.board.chat.at(-1).owed, []);
+});
+
+test('a refused /audit throws an OpError and posts nothing', () => {
+  const a = setup();
+  a.calls.auditResult = { error: 'Nobody can audit right now.' };
+  assert.throws(() => a.room.userChat({ text: '/audit' }), (e) => e instanceof OpError && /Nobody can audit/.test(e.message));
+  assert.equal(a.store.board.chat.length, 0);
+});
+
+test('/stop while an audit runs stops it', () => {
+  const a = setup();
+  a.colab.status = { state: 'idle', pruning: false, prunePending: false, auditing: true };
+  assert.deepEqual(a.room.userChat({ text: '/stop' }), { stopped: true });
+  assert.equal(a.calls.stop, 1);
 });

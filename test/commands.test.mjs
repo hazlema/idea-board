@@ -21,8 +21,8 @@ test('plain text and parsed commands', () => {
 
 test('bad commands give the exact error copy', () => {
   const cases = [
-    ['/home/x', 'Unknown command /home/x. Commands: /chat N (or /c N), /start, /stop, /prune. Start with // to send a message that begins with /.'],
-    ['/chat2 hi', 'Unknown command /chat2. Commands: /chat N (or /c N), /start, /stop, /prune. Start with // to send a message that begins with /.'],
+    ['/home/x', 'Unknown command /home/x. Commands: /chat N (or /c N), /start, /stop, /prune, /audit. Start with // to send a message that begins with /.'],
+    ['/chat2 hi', 'Unknown command /chat2. Commands: /chat N (or /c N), /start, /stop, /prune, /audit. Start with // to send a message that begins with /.'],
     ['/chat x hi', CHAT_USAGE],
     ['/chat 2', 'Add a message after /chat N.'],
     ['/start', 'Add a kickoff message after /start.'],
@@ -34,10 +34,15 @@ test('bad commands give the exact error copy', () => {
 });
 
 test('COMMANDS_HINT names the commands', () => {
-  assert.equal(COMMANDS_HINT, '/chat N (or /c N) · /start · /stop · /prune');
+  assert.equal(COMMANDS_HINT, '/chat N (or /c N) · /start · /stop · /prune · /audit');
 });
 
 test('/prune takes optional guidance', () => {
   assert.deepEqual(parseCommand('/prune focus on X'), { kind: 'prune', text: 'focus on X' });
   assert.deepEqual(parseCommand('/prune'), { kind: 'prune', text: '' });
+});
+
+test('/audit takes optional focus text', () => {
+  assert.deepEqual(parseCommand('/audit the rules'), { kind: 'audit', text: 'the rules' });
+  assert.deepEqual(parseCommand('/audit'), { kind: 'audit', text: '' });
 });
