@@ -117,6 +117,24 @@ test('a reply already answered by a session is dropped', async () => {
   }
 });
 
+test('a chat answer gets the file tools', async () => {
+  const echo = `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_1' }));
+`;
+  const { dir, store, agent, idle } = setup(echo);
+  try {
+    store.apply({ type: 'chat', text: 'question', owed: ['claude'] }, 'user');
+    const done = idle();
+    agent.nudge();
+    await done;
+    const argv = JSON.parse(store.board.chat.find((m) => m.role === 'claude').text);
+    assert.equal(argv[argv.indexOf('--tools') + 1], 'Read,Glob,Grep');
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
 test('the role text is appended to the system prompt', async () => {
   const echo = `#!/usr/bin/env node
 const sys = process.argv[process.argv.indexOf('--append-system-prompt') + 1];

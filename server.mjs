@@ -150,7 +150,10 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
       if (url.pathname === '/mcp') {
         if (req.method === 'POST') {
           const token = url.searchParams.get('prune');
-          const reply = await (token ? pruneMcp(token) : url.searchParams.get('audit') === '1' ? auditMcp : mcp)(await readBody(req));
+          let handle = mcp;
+          if (token) handle = pruneMcp(token);
+          else if (url.searchParams.get('audit') === '1') handle = auditMcp;
+          const reply = await handle(await readBody(req));
           if (reply === null) { res.writeHead(202); return res.end(); }
           return sendJson(res, 200, reply);
         }
