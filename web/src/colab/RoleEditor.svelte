@@ -2,6 +2,7 @@
   import * as api from '$lib/api';
   import { live } from '$lib/live.svelte';
   import { colabState } from './colab.svelte';
+  import PassPane from './PassPane.svelte';
   import RolePane from './RolePane.svelte';
 
   interface Props {
@@ -10,8 +11,9 @@
 
   let { onclose }: Props = $props();
 
-  /** A role id, or null for the shared rules. */
+  /** A role id, null for the shared rules, or a pass. */
   let selected = $state<string | null>(null);
+  const passName = $derived(selected === 'pass:audit' ? 'audit' : selected === 'pass:prune' ? 'prune' : null);
   const roles = $derived(colabState.library.roles);
 
   async function save(library: typeof colabState.library): Promise<boolean> {
@@ -59,9 +61,16 @@
           <button type="button" class={item(selected === role.id)} aria-current={selected === role.id ? 'true' : undefined} onclick={() => (selected = role.id)}>{role.name}</button>
         {/each}
         <button type="button" class="rounded-md border border-line px-2 py-1.5 text-text hover:border-muted" onclick={addRole}>+ New role</button>
+        <h3 class="mt-2 px-2 text-xs font-semibold tracking-wide text-muted uppercase">Passes</h3>
+        <button type="button" class={item(selected === 'pass:audit')} aria-current={selected === 'pass:audit' ? 'true' : undefined} onclick={() => (selected = 'pass:audit')}>Final audit</button>
+        <button type="button" class={item(selected === 'pass:prune')} aria-current={selected === 'pass:prune' ? 'true' : undefined} onclick={() => (selected = 'pass:prune')}>Prune</button>
       </nav>
       {#key selected}
-        <RolePane roleId={selected} ondelete={deleteRole} />
+        {#if passName}
+          <PassPane name={passName} {save} />
+        {:else}
+          <RolePane roleId={selected} ondelete={deleteRole} />
+        {/if}
       {/key}
     </div>
   </div>

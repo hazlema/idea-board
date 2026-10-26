@@ -1,4 +1,4 @@
-import type { BoardInfo, ConnectionInfo, HistoryRow, Model, Op, Role, RunStatus, Skipped, VersionMeta, Board } from './types';
+import type { BoardInfo, ConnectionInfo, HistoryRow, Library, Model, Op, RunStatus, Skipped, VersionMeta, Board } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -69,7 +69,8 @@ export const boardInfo = (): Promise<BoardInfo> => request('/api/board');
 export interface ColabInfo {
   status: RunStatus;
   hasKey: boolean;
-  library: { rules: string; roles: Role[] };
+  library: Library;
+  passDefaults: { audit: string; prune: string };
   connections: ConnectionInfo[];
 }
 
@@ -83,8 +84,8 @@ export async function colabImageModels(): Promise<Model[]> {
   return (await request<{ models: Model[] }>('/api/colab/image-models')).models;
 }
 
-export async function saveLibrary(library: { rules: string; roles: Role[] }): Promise<{ rules: string; roles: Role[] }> {
-  const res = await request<{ library: { rules: string; roles: Role[] } }>('/api/colab/library', {
+export async function saveLibrary(library: Library): Promise<Library> {
+  const res = await request<{ library: Library }>('/api/colab/library', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(library),

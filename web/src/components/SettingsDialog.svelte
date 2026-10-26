@@ -31,7 +31,7 @@
   }
 
   // Pruning: sent like the image model, with the rest of the line-up.
-  function setPrune(patch: { pruneLimit?: number | null; pruneAggressiveness?: 'gentle' | 'normal' | 'aggressive' }): void {
+  function setPrune(patch: { pruneLimit?: number | null; pruneAggressiveness?: 'gentle' | 'normal' | 'aggressive'; auditAtEnd?: boolean }): void {
     if (!lineup) return;
     void live.send({ type: 'setColabLineup', ...$state.snapshot(lineup), ...patch });
   }
@@ -123,6 +123,15 @@
         </select>
       </label>
       <p class="text-xs text-muted">Gentle: tidy only. Normal: also cut the weakest mechanics. Aggressive: keep only what the Brief and the kept mechanics need.</p>
+    </section>
+
+    <section class="flex flex-col gap-1 rounded-md border border-line bg-raised p-3">
+      <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Audit</h3>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" checked={lineup?.auditAtEnd ?? true} disabled={!canEdit} onchange={(e) => setPrune({ auditAtEnd: e.currentTarget.checked })} />
+        <span class="text-muted">Audit at the end of a run</span>
+      </label>
+      <p class="text-xs text-muted">The Foreman checks the board once more when the agents are done. /audit runs it on demand.</p>
     </section>
     {#if !canEdit}<p class="text-xs text-muted">Agents are running; change these when they stop.</p>{/if}
   </div>

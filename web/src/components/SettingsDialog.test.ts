@@ -23,7 +23,7 @@ const idle = { state: 'idle', round: 0, rounds: 5, current: null, spent: 0, budg
 
 beforeEach(() => {
   vi.mocked(api.op).mockClear();
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, connections: [] });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, passDefaults: { audit: '', prune: '' }, connections: [] });
   vi.mocked(api.colabModels).mockResolvedValue([]);
   vi.mocked(api.colabImageModels).mockResolvedValue(imageModels);
   colabState.loaded = false;
@@ -98,4 +98,12 @@ test('Pruning is locked while agents run', () => {
   render(SettingsDialog, { onclose: () => {} });
   expect(screen.getByLabelText('Mechanics limit')).toBeDisabled();
   expect(screen.getByLabelText('Aggressiveness')).toBeDisabled();
+});
+
+test('the audit checkbox is on by default and unchecking sends auditAtEnd false', async () => {
+  render(SettingsDialog, { onclose: () => {} });
+  const box = screen.getByRole('checkbox', { name: 'Audit at the end of a run' });
+  expect(box).toBeChecked();
+  await fireEvent.click(box);
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'setColabLineup', auditAtEnd: false }));
 });

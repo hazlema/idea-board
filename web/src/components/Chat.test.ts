@@ -157,7 +157,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · ↑ for earlier messages')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · /audit · ↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
@@ -256,6 +256,13 @@ test('a prune pass asked for or going outside a run has a Stop button', async ()
   expect(api.stopColab).toHaveBeenCalled();
   live.colab = { ...idle, current: 'claude', pruning: true, prunePending: true };
   await tick();
+  expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+  live.colab = null;
+});
+
+test('a final audit has a Stop button', async () => {
+  live.colab = { state: 'idle', round: 0, rounds: 0, current: 'claude', spent: 0, budget: 5, claude: 'binary', connections: {}, auditing: true };
+  render(Chat);
   expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   live.colab = null;
 });

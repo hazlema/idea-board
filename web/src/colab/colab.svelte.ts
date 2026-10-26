@@ -1,11 +1,13 @@
 import * as api from '$lib/api';
 import { live } from '$lib/live.svelte';
-import type { Model, Role } from '$lib/types';
+import type { Library, Model } from '$lib/types';
 
 // What the Agents panel needs from the server besides the board: the role library,
 // the model list and whether a key is set. Loaded when the panel opens.
 class ColabState {
-  library = $state<{ rules: string; roles: Role[] }>({ rules: '', roles: [] });
+  library = $state<Library>({ rules: '', roles: [] });
+  /** The built-in texts of the audit and prune passes. */
+  passDefaults = $state<{ audit: string; prune: string }>({ audit: '', prune: '' });
   /** The models agents can use, or null until loaded (or when loading failed). */
   models = $state<Model[] | null>(null);
   /** The models that make pictures; null until loaded (or when loading failed). */
@@ -20,6 +22,7 @@ class ColabState {
     try {
       const info = await api.colab();
       this.library = info.library;
+      this.passDefaults = info.passDefaults;
       this.hasKey = info.hasKey;
       live.colab = info.status;
       this.loaded = true;

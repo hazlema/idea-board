@@ -18,7 +18,7 @@
 
   const MAX_LABEL = 200;
   const PLACEHOLDER = 'Message everyone, or /chat N to ask one… (Enter to send, Shift+Enter for a new line)';
-  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop · /prune · ↑ for earlier messages';
+  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop · /prune · /audit · ↑ for earlier messages';
 
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);
@@ -156,7 +156,7 @@
       style:color={turnColor}
       aria-live="polite">{status}</span
     >
-    {#if running || live.colab?.pruning || live.colab?.prunePending}
+    {#if running || live.colab?.pruning || live.colab?.prunePending || live.colab?.auditing}
       <button
         class="shrink-0 rounded-md border border-line px-2 py-0.5 hover:bg-raised disabled:opacity-50"
         disabled={live.colab?.state === 'stopping'}

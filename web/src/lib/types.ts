@@ -189,7 +189,7 @@ export interface RosterEntry {
 export interface Colab {
   roster: RosterEntry[];
   /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string; pruneLimit: number | null; pruneAggressiveness: 'gentle' | 'normal' | 'aggressive' };
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string; pruneLimit: number | null; pruneAggressiveness: 'gentle' | 'normal' | 'aggressive'; auditAtEnd?: boolean };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
   /** Spend across all OpenRouter connections, until reset. */
@@ -198,6 +198,18 @@ export interface Colab {
   claudeName: string;
   /** When the last prune pass ended, or null. */
   lastPruneAt: string | null;
+}
+
+/** The texts of the one-off passes; a missing one means the default. */
+export interface Passes {
+  audit?: string;
+  prune?: string;
+}
+
+export interface Library {
+  rules: string;
+  roles: Role[];
+  passes?: Passes;
 }
 
 export interface Role {
@@ -238,6 +250,8 @@ export interface RunStatus {
   pruning?: boolean;
   /** A prune pass is asked for or going (from /prune until it ends or is dropped). */
   prunePending?: boolean;
+  /** The final audit pass is going. */
+  auditing?: boolean;
   /** Per connection id ('claude' or a card id). */
   connections: Record<string, ConnectionStatus>;
 }

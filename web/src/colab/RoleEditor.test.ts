@@ -103,7 +103,7 @@ test('the last role cannot be deleted', async () => {
 test('deleting a role a card uses makes the card show Role missing', async () => {
   const board = live.board!;
   board.colab.lineup.agents = [{ model: 'm/x', roleId: 'foreman', settings: {} }];
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, connections: [], library: library() });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, connections: [], library: library(), passDefaults: { audit: '', prune: '' } });
   vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(ConnectionsPanel);
   await vi.advanceTimersByTimeAsync(0);
@@ -133,4 +133,30 @@ test('the picture checkbox saves pictures', async () => {
   await fireEvent.click(screen.getByRole('checkbox', { name: 'Can make pictures' }));
   await vi.advanceTimersByTimeAsync(0);
   expect(api.saveLibrary).toHaveBeenLastCalledWith({ rules: 'Be kind.', roles: library().roles });
+});
+
+test('Final audit shows the default text, editing saves passes.audit, and Reset removes it', async () => {
+  colabState.passDefaults = { audit: 'Default audit.', prune: 'Default prune.' };
+  render(RoleEditor, { onclose: () => {} });
+  await open('Final audit');
+  const box = screen.getByLabelText('Instructions, every board') as HTMLTextAreaElement;
+  expect(box.value).toBe('Default audit.');
+  expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
+  await fireEvent.input(box, { target: { value: 'Check hard.' } });
+  await vi.advanceTimersByTimeAsync(600);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: { audit: 'Check hard.' } });
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: {} });
+});
+
+test('the Prune pane keeps the audit text and names /prune', async () => {
+  colabState.passDefaults = { audit: 'A', prune: 'Default prune.' };
+  colabState.library = { ...library(), passes: { audit: 'Mine' } };
+  render(RoleEditor, { onclose: () => {} });
+  await open('Prune');
+  expect(screen.getByText(/\/prune <text>/)).toBeInTheDocument();
+  await fireEvent.input(screen.getByLabelText('Instructions, every board'), { target: { value: 'Cut.' } });
+  await vi.advanceTimersByTimeAsync(600);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: { audit: 'Mine', prune: 'Cut.' } });
 });
