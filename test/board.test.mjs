@@ -158,7 +158,7 @@ test('an AI chat message may carry turn stats; a user message may not, and junk 
 
 test('a board saved before the turn limit existed gets the 30 minute default', () => {
   const b = migrateBoard({ ...emptyBoard(), colab: { roster: [], lineup: { agents: [], rounds: 3, budget: 2 }, extras: { rules: '', roles: {} }, run: null } });
-  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL, pruneLimit: 5, pruneAggressiveness: 'normal' });
+  assert.deepEqual(b.colab.lineup, { agents: [], rounds: 3, budget: 2, turnLimit: 30, claudeRoleId: 'foreman', imageModel: DEFAULT_IMAGE_MODEL, pruneLimit: 5, pruneAggressiveness: 'normal', auditAtEnd: true });
 });
 
 test('user chat stores owed/to/start', () => {
@@ -283,4 +283,17 @@ test('migrateBoard normalizes hand-edited prune settings', () => {
   assert.equal(fix({ pruneAggressiveness: 'gentle' }).pruneAggressiveness, 'gentle');
   const b = migrateBoard({ ...emptyBoard(), colab: { ...emptyBoard().colab, lineup: { ...emptyBoard().colab.lineup, pruneLimit: 0 } } });
   assert.doesNotThrow(() => applyOp(b, { type: 'setColabLineup', ...b.colab.lineup }, 'user'));
+});
+
+test('auditAtEnd defaults to true, survives migration and is validated', () => {
+  const board = emptyBoard();
+  assert.equal(board.colab.lineup.auditAtEnd, true);
+  applyOp(board, lineupOp({ auditAtEnd: false }), 'user');
+  assert.equal(board.colab.lineup.auditAtEnd, false);
+  applyOp(board, lineupOp(), 'user');
+  assert.equal(board.colab.lineup.auditAtEnd, false);
+  assert.equal(migrateBoard(structuredClone(board)).colab.lineup.auditAtEnd, false);
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [] } } }).colab.lineup.auditAtEnd, true);
+  assert.equal(migrateBoard({ colab: { lineup: { agents: [], auditAtEnd: 'yes' } } }).colab.lineup.auditAtEnd, true);
+  for (const bad of ['yes', 1, null]) assert.throws(() => applyOp(board, lineupOp({ auditAtEnd: bad }), 'user'), /auditAtEnd must be true or false/);
 });

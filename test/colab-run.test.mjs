@@ -11,6 +11,7 @@ import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 import { PRUNE_REGROW, Pruner } from '../lib/prune.mjs';
+import { AUDIT_FRAME, AUDIT_TOOLS } from '../lib/audit.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -19,10 +20,11 @@ const ID_B = agentId(B.model, B.roleId);
 const presence = { attached: () => false };
 const noClaude = { via: () => 'none', takeTurn: async () => ({ ok: false, error: 'no claude' }) };
 
-function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence, pruner, sizeOf } = {}) {
+function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence, pruner, sizeOf, auditAtEnd = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
-  Object.assign(store.board.colab.lineup, { agents, rounds, budget });
+  // Most tests leave the final audit out; its own tests turn it on.
+  Object.assign(store.board.colab.lineup, { agents, rounds, budget, auditAtEnd });
   const calls = [];
   const openrouter = {
     hasKey: () => true,
@@ -1085,4 +1087,147 @@ test('a board that shrank below the threshold prunes again once it is over it, w
   kickoff(store, run);
   await run.finished;
   assert.deepEqual(order, ['turn', 'prune', 'turn', 'turn', 'prune']);
+});
+
+// Claude through the binary, auditing with `audit` (default: "All good." at once).
+function auditingClaude(audit = async () => ({ ok: true, text: 'All good.' })) {
+  const calls = [];
+  return { calls, via: () => 'binary', found: true, takeTurn: async () => ({ ok: true, text: 'claude turn' }), audit: async (p, o) => { calls.push({ p, o }); return audit(p, o); } };
+}
+const F = { model: 'acme/gamma-three', roleId: 'foreman' };
+const ID_F = agentId(F.model, F.roleId);
+
+test("a run that reaches its last round ends with the Foreman's audit", async () => {
+  const claude = auditingClaude();
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, auditAtEnd: true, pruner: fakePruner(), sizeOf: () => 0, complete: () => text('done') });
+  kickoff(store, run);
+  await run.finished;
+  const texts = chatPosts(store).map((m) => [m.role, m.text]);
+  assert.deepEqual(texts.slice(-2), [['claude', 'The run is over; Claude is auditing the board.'], ['claude', 'All good.']]);
+  assert.equal(claude.calls.length, 1);
+  assert.ok(claude.calls[0].o.systemPrompt.startsWith(AUDIT_FRAME));
+  assert.ok(claude.calls[0].o.signal instanceof AbortSignal);
+  assert.equal(run.status.state, 'idle');
+  assert.equal(run.status.auditing, false);
+});
+
+test('a stopped run gets no audit', async () => {
+  const claude = auditingClaude();
+  let run;
+  const made = setup({ agents: [A], rounds: 2, claude, auditAtEnd: true, complete: () => { run.stop(); return text('done'); } });
+  run = made.run;
+  kickoff(made.store, run);
+  await run.finished;
+  assert.equal(claude.calls.length, 0);
+  assert.ok(!made.store.board.chat.some((m) => /audit/.test(m.text)));
+});
+
+test('Stop during the final audit cuts it short', async () => {
+  let run;
+  const claude = auditingClaude((p, o) => new Promise((resolve) => {
+    o.signal.addEventListener('abort', () => resolve({ ok: false, error: 'aborted' }));
+    assert.equal(run.status.auditing, true);
+    run.stop();
+  }));
+  const made = setup({ agents: [A], rounds: 1, claude, auditAtEnd: true, complete: () => text('done') });
+  run = made.run;
+  kickoff(made.store, run);
+  await run.finished;
+  assert.equal(run.status.state, 'idle');
+  assert.equal(made.store.board.chat.at(-1).text, '(stopped partway through my turn)');
+  assert.equal(run.status.auditing, false);
+});
+
+test('auditAtEnd false skips the final audit', async () => {
+  const claude = auditingClaude();
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, auditAtEnd: false, complete: () => text('done') });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(claude.calls.length, 0);
+  assert.ok(!store.board.chat.some((m) => /audit/.test(m.text)));
+});
+
+test('a run with no one to audit says it skipped the audit', async () => {
+  const { store, run } = setup({ agents: [A], rounds: 1, auditAtEnd: true, complete: () => text('done') });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(store.board.chat.at(-1).text, 'Skipped the final audit: no one can audit.');
+});
+
+test('a card that holds the Foreman role audits read-only in a fresh conversation', async () => {
+  const { store, run, calls } = setup({
+    agents: [A, F],
+    complete: (req) => (thisTurn(req).some((m) => m.role === 'tool') ? text('Two duplicates in Mechanics.') : toolCall('add_note', '{"text":"sneaky"}')),
+  });
+  assert.deepEqual(run.audit({ focus: 'the lore' }), { ok: true, by: store.board.colab.roster.find((r) => r.id === ID_F).name });
+  await run.settled();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(new Set(calls[0].tools.map((t) => t.function.name)), AUDIT_TOOLS);
+  assert.ok(calls[0].messages[0].content.startsWith(AUDIT_FRAME));
+  assert.match(calls[0].messages[1].content, /the lore/);
+  // The write was refused: the board has no note.
+  assert.match(calls[1].messages.find((m) => m.role === 'tool').content, /^Error:/);
+  assert.equal(store.board.brainstorm.pages[0].objects.length, 0);
+  assert.equal(run.conversations.has(ID_F), false);
+  const last = store.board.chat.at(-1);
+  assert.deepEqual([last.role, last.text], [ID_F, 'Two duplicates in Mechanics.']);
+  assert.deepEqual(last.answers ?? [], []);
+});
+
+test('/audit waits for a pending prune', async () => {
+  const order = [];
+  const answering = gate();
+  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
+  const claude = auditingClaude(async () => { order.push('audit'); return { ok: true, text: 'fine' }; });
+  const { store, run } = setup({ agents: [A], claude, pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  run.ensureRoster();
+  hostSays(store, 'hi', { owed: [ID_A] });
+  run.answer(ID_A);
+  assert.deepEqual(run.prune({}), { ok: true });
+  assert.deepEqual(run.audit({}), { ok: true, by: 'Claude' });
+  assert.equal(run.status.auditing, true);
+  assert.equal(run.startError(), 'Wait for the prune to finish.');
+  answering.open();
+  await run.settled();
+  assert.deepEqual(order, ['prune', 'audit']);
+  assert.equal(run.status.auditing, false);
+});
+
+test('audit is refused during a run, while one is going, and with no auditor', async () => {
+  const going = gate();
+  const claude = auditingClaude(async () => { await going.promise; return { ok: true, text: 'ok' }; });
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, complete: () => text('done') });
+  kickoff(store, run);
+  assert.deepEqual(run.audit({}), { error: 'The run ends with an audit.' });
+  await run.finished;
+  assert.deepEqual(run.audit({}), { ok: true, by: 'Claude' });
+  assert.deepEqual(run.audit({}), { error: 'An audit is already going.' });
+  assert.equal(run.startError(), 'Wait for the audit to finish.');
+  going.open();
+  await run.settled();
+  const bare = setup({ agents: [A], complete: () => text('x') });
+  assert.deepEqual(bare.run.audit({}), { error: 'No one can audit: give a connection the Foreman role, or install the claude command.' });
+});
+
+test('the Foreman card over budget falls back to Claude', async () => {
+  const claude = auditingClaude();
+  const { store, run, calls } = setup({ agents: [F], budget: 1, claude, complete: () => text('x') });
+  store.board.colab.lineup.claudeRoleId = 'creative';
+  store.board.colab.spent = 2;
+  assert.deepEqual(run.audit({ focus: 'gaps' }), { ok: true, by: 'Claude' });
+  await run.settled();
+  assert.equal(calls.length, 0);
+  assert.equal(claude.calls.length, 1);
+  assert.match(claude.calls[0].p, /gaps/);
+  assert.equal(store.board.chat.at(-1).text, 'All good.');
+});
+
+test('Stop aborts an idle audit', async () => {
+  const claude = auditingClaude((p, o) => new Promise((resolve) => o.signal.addEventListener('abort', () => resolve({ ok: false, error: 'aborted' }))));
+  const { store, run } = setup({ agents: [], claude, complete: () => text('x') });
+  run.audit({});
+  await sleep(5);
+  run.stop();
+  await run.settled();
+  assert.equal(store.board.chat.at(-1).text, '(stopped partway through my turn)');
 });
