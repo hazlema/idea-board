@@ -302,3 +302,14 @@ test('the prompt tells the agent how to cut a mechanic with rule_out', () => {
   assert.match(PRUNE_SYSTEM_PROMPT, /rule_out kind "idea"/);
   assert.match(PRUNE_SYSTEM_PROMPT, /Never use rule_out on single entries or cards/);
 });
+
+test("a pass uses the library's prune text", async () => {
+  const seen = [];
+  const agent = { found: true, prune: async (p, opts) => { seen.push(opts.systemPrompt); return { ok: true, text: 'ok' }; } };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-prune-'));
+  const store = new BoardStore(path.join(dir, 'b.json'));
+  const library = { get: () => ({ rules: '', roles: [], passes: { prune: 'Cut hard.' } }) };
+  await new Pruner({ store, agent, library }).run({});
+  await new Pruner({ store, agent }).run({});
+  assert.deepEqual(seen, ['Cut hard.', PRUNE_SYSTEM_PROMPT]);
+});

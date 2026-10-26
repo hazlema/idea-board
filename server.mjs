@@ -13,7 +13,7 @@ import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
 import { PictureMaker } from './lib/colab/pictures.mjs';
 import { Agent } from './lib/agent.mjs';
-import { Library, libraryFile } from './lib/colab/library.mjs';
+import { Library, libraryFile, PASS_DEFAULTS } from './lib/colab/library.mjs';
 import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
 import { ColabRun } from './lib/colab/run.mjs';
 import { Pruner } from './lib/prune.mjs';
@@ -97,7 +97,7 @@ async function colabRoute(run, room, pathname, req, res) {
     throw error;
   };
   if (pathname === '/api/colab' && req.method === 'GET') {
-    sendJson(res, 200, { status: run.status, hasKey: openrouter.hasKey(), library: library.get(), connections: room.connections() });
+    sendJson(res, 200, { status: run.status, hasKey: openrouter.hasKey(), library: library.get(), passDefaults: PASS_DEFAULTS, connections: room.connections() });
   } else if (pathname === '/api/colab/models' && req.method === 'GET') {
     try { sendJson(res, 200, { models: await openrouter.models() }); }
     catch (error) { sendJson(res, 502, { error: error.message }); }
@@ -107,7 +107,7 @@ async function colabRoute(run, room, pathname, req, res) {
   } else if (pathname === '/api/colab/library' && req.method === 'PUT') {
     const body = (await readBody(req)) ?? {};
     try {
-      const saved = library.save({ rules: body.rules, roles: body.roles });
+      const saved = library.save({ rules: body.rules, roles: body.roles, passes: body.passes });
       // Role names and which cards can answer follow the library (after the run, like line-up edits).
       if (run.status.state === 'idle') room.lineupChanged();
       sendJson(res, 200, { library: saved });
@@ -299,7 +299,7 @@ export function connect({ store, presence, library, openrouter, pictures, agent:
     ...agentOptions,
     quiet: () => colab.status.state !== 'idle',
   });
-  const pruner = new Pruner({ store, agent });
+  const pruner = new Pruner({ store, agent, library });
   colab = new ColabRun({ store, presence, claude: agent, library, openrouter, pictures, pruner });
   const room = new Room({ store, agent, presence, colab, library });
   // When a run ends, a user message the background agent held back is answered. Only the

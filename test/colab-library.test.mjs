@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { OpError } from '../lib/board.mjs';
 import { emptyBoard } from '../lib/board.mjs';
-import { DEFAULT_LIBRARY, Library, configDir } from '../lib/colab/library.mjs';
+import { DEFAULT_LIBRARY, Library, configDir, passText } from '../lib/colab/library.mjs';
+import { DEFAULT_AUDIT_TEXT } from '../lib/audit.mjs';
 import { stripSelfTag, systemPrompt, turnMessage } from '../lib/colab/prompts.mjs';
 
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-')), 'sub', 'colab.json');
@@ -82,4 +83,19 @@ test('stripSelfTag drops only a tag naming this agent', () => {
 test('the turn rules say the final reply is posted for the agent', async () => {
   const { TURN_RULES } = await import('../lib/colab/prompts.mjs');
   assert.match(TURN_RULES, /no tool call/);
+});
+
+test('passes are optional, saved only when non-blank, and checked', () => {
+  const lib = new Library(tmpFile());
+  const roles = [{ id: 'a', name: 'A', job: 'j' }];
+  assert.deepEqual(lib.save({ rules: '', roles, passes: { audit: 'Check X', prune: '   ' } }).passes, { audit: 'Check X' });
+  assert.throws(() => lib.save({ rules: '', roles, passes: { other: 'x' } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, passes: { audit: 'x'.repeat(20001) } }), OpError);
+  assert.ok(!('passes' in lib.save({ rules: '', roles })));
+  assert.ok(!('passes' in lib.save({ rules: '', roles, passes: { audit: ' ' } })));
+});
+
+test('passText falls back to the default', () => {
+  assert.equal(passText({ rules: '', roles: [] }, 'audit'), DEFAULT_AUDIT_TEXT);
+  assert.equal(passText({ rules: '', roles: [], passes: { prune: 'Mine' } }, 'prune'), 'Mine');
 });
