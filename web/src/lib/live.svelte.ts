@@ -145,10 +145,16 @@ class Live {
     }
   }
 
-  /** Posts a chat message without a toast; resolves with the server's error message if it was refused. */
-  async chat(text: string, context?: Pointer[]): Promise<{ ok: true } | { error: string }> {
+  /**
+   * Posts a chat message without a toast; resolves with the server's error message if it was refused,
+   * or with a question when the server wants the host to confirm first (an unneeded /prune).
+   * `confirmed` resends it with the answer yes.
+   */
+  async chat(text: string, context?: Pointer[], confirmed = false): Promise<{ ok: true } | { error: string } | { confirm: string }> {
     try {
-      await api.chat({ type: 'chat', text, context });
+      const sent = await api.chat(confirmed ? { type: 'chat', text, context, confirmed: true } : { type: 'chat', text, context });
+      const confirm = sent && typeof sent === 'object' && 'confirm' in sent ? sent.confirm : undefined;
+      if (typeof confirm === 'string') return { confirm };
       return { ok: true };
     } catch (error) {
       return { error: error instanceof Error ? error.message : 'Could not send' };

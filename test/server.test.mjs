@@ -442,7 +442,7 @@ test('/stop works on a /prune accepted but not started yet, and the pass says it
   const pruner = { available: () => true, run: async (o) => { calls.push(o); return { ok: true, started: true, before: 1, after: 1 }; } };
   // Claude's chat answer is in flight, so the pass waits for it.
   await withServer(async ({ userOp, colab, store, agent }) => {
-    assert.equal((await userOp({ type: 'chat', text: '/prune' })).status, 200);
+    assert.equal((await userOp({ type: 'chat', text: '/prune', confirmed: true })).status, 200);
     assert.equal(colab.status.prunePending, true);
     assert.equal(colab.status.pruning, false);
     const stop = await userOp({ type: 'chat', text: '/stop' });

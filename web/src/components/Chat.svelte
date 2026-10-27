@@ -125,7 +125,15 @@
     chatHistory.add(text);
     draft = '';
     error = '';
-    const sent = await live.chat(text, context);
+    let sent = await live.chat(text, context);
+    // The server asks first (a /prune nothing needs): yes sends it again, confirmed; no keeps what was typed.
+    if ('confirm' in sent) {
+      if (!window.confirm(sent.confirm)) {
+        if (!draft) draft = text;
+        return;
+      }
+      sent = await live.chat(text, context, true);
+    }
     // A refused or failed send keeps what was typed, unless the user has started something new.
     if ('error' in sent) {
       error = sent.error;

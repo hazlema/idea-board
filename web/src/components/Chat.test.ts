@@ -297,3 +297,30 @@ test('a final audit has a Stop button', async () => {
   expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   live.colab = null;
 });
+
+const NOT_NEEDED = "Pruning isn't needed: every section is under its limit. Prune anyway?";
+
+test('an unneeded /prune pops up a confirmation; yes resends it confirmed', async () => {
+  vi.mocked(api.op).mockResolvedValueOnce({ confirm: NOT_NEEDED });
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(Chat);
+  const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
+  await typeAndSend('/prune keep lore');
+  await waitFor(() => expect(api.op).toHaveBeenCalledTimes(2));
+  expect(ask).toHaveBeenCalledWith(NOT_NEEDED);
+  expect(api.op).toHaveBeenNthCalledWith(1, { type: 'chat', text: '/prune keep lore', context: undefined });
+  expect(api.op).toHaveBeenNthCalledWith(2, { type: 'chat', text: '/prune keep lore', context: undefined, confirmed: true });
+  expect(input.value).toBe('');
+  ask.mockRestore();
+});
+
+test('declining the confirmation keeps the /prune in the box and sends nothing more', async () => {
+  vi.mocked(api.op).mockResolvedValueOnce({ confirm: NOT_NEEDED });
+  const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(Chat);
+  const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
+  await typeAndSend('/prune keep lore');
+  await waitFor(() => expect(input.value).toBe('/prune keep lore'));
+  expect(api.op).toHaveBeenCalledTimes(1);
+  ask.mockRestore();
+});

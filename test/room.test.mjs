@@ -220,22 +220,40 @@ test('a /start the run refuses posts nothing', () => {
 
 test('/prune starts a pass and posts the request, owing nothing', () => {
   const a = setup();
-  a.room.userChat({ text: '/prune' });
+  a.room.userChat({ text: '/prune', confirmed: true });
   assert.deepEqual(a.calls.prune, [{ guidance: '' }]);
   const m = a.store.board.chat.at(-1);
   assert.equal(m.text, 'Prune the board.');
   assert.deepEqual(m.owed, []);
   const b = setup();
-  b.room.userChat({ text: '/prune the pirates' });
+  b.room.userChat({ text: '/prune the pirates', confirmed: true });
   assert.deepEqual(b.calls.prune, [{ guidance: 'the pirates' }]);
   assert.equal(b.store.board.chat.at(-1).text, 'Prune the board: the pirates');
   assert.deepEqual(b.store.board.chat.at(-1).owed, []);
 });
 
+test('/prune with no section over asks first and posts nothing; confirmed, it runs', () => {
+  const a = setup();
+  assert.deepEqual(a.room.userChat({ text: '/prune the pirates' }), { confirm: "Pruning isn't needed: every section is under its limit. Prune anyway?" });
+  assert.deepEqual(a.calls.prune, []);
+  assert.equal(a.store.board.chat.length, 0);
+  a.room.userChat({ text: '/prune the pirates', confirmed: true });
+  assert.deepEqual(a.calls.prune, [{ guidance: 'the pirates' }]);
+  assert.equal(a.store.board.chat.at(-1).text, 'Prune the board: the pirates');
+});
+
+test('/prune with a section over runs without asking', () => {
+  const a = setup();
+  a.store.apply({ type: 'addObject', kind: 'group', title: 'Big', x: 0, y: 0, entries: Array.from({ length: 5 }, (_, i) => ({ label: `Long ${i}`, text: 'w'.repeat(17_000) })) }, 'user');
+  a.room.userChat({ text: '/prune' });
+  assert.deepEqual(a.calls.prune, [{ guidance: '' }]);
+  assert.equal(a.store.board.chat.at(-1).text, 'Prune the board.');
+});
+
 test('a refused /prune throws and posts nothing', () => {
   const a = setup();
   a.calls.pruneResult = { error: '/prune needs the claude command.' };
-  assert.throws(() => a.room.userChat({ text: '/prune' }), /\/prune needs the claude command\./);
+  assert.throws(() => a.room.userChat({ text: '/prune', confirmed: true }), /\/prune needs the claude command\./);
   assert.equal(a.store.board.chat.length, 0);
 });
 
