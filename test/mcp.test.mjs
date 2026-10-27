@@ -714,3 +714,15 @@ test("the binary's prompt says a request step is the foreman's, approved by the 
   const prompt = buildPrompt([{ id: 'm1', role: 'user', text: 'rework the saves', request: { by: card.id, step: 1, of: 1 } }], board);
   assert.equal(prompt, "[X · Foreman's request, approved by the host]\nrework the saves");
 });
+
+test("a session's reply doesn't answer a foreman's request step it was never handed", () => withServer(async ({ call, store, presence }) => {
+  const { message: asked } = store.apply({ type: 'chat', text: 'plain question', owed: ['claude'] }, 'user');
+  presence.delivered.add(asked.id);
+  const { message: step } = store.apply({ type: 'chat', text: 'step', to: ['claude'], owed: ['claude'], request: { by: 'claude', step: 1, of: 1 } }, 'user');
+  await call('reply', { text: 'answered the plain one' });
+  assert.deepEqual(store.board.chat.find((m) => m.id === asked.id).owed, []);
+  assert.deepEqual(store.board.chat.find((m) => m.id === step.id).owed, ['claude']);
+  presence.delivered.add(step.id);
+  await call('reply', { text: 'now the step' });
+  assert.deepEqual(store.board.chat.find((m) => m.id === step.id).owed, []);
+}));

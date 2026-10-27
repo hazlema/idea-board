@@ -31,7 +31,9 @@ function setup({ cards = [A, B], claudeRoleId = 'foreman' } = {}) {
       }),
     ],
     dispatch: (m) => dispatched.push(m),
+    agent: { cutAnswer: (id) => cutClaude.push(id) },
   };
+  const cutClaude = [];
   const cut = [];
   const colab = { status: { state: 'idle' }, cutAnswer: (id) => cut.push(id) };
   const requests = new ForemanRequests({ store, room, colab });
@@ -41,7 +43,7 @@ function setup({ cards = [A, B], claudeRoleId = 'foreman' } = {}) {
     store.historyLog.flush();
     fs.rmSync(dir, { recursive: true });
   };
-  return { store, requests, room, colab, down, dispatched, cut, answerAs, last, cleanup };
+  return { store, requests, room, colab, down, dispatched, cut, cutClaude, answerAs, last, cleanup };
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -196,7 +198,11 @@ test('a step that fails stops the chain', async () => {
   const asClaude = setup({ cards: [{ ...A, roleId: 'foreman', name: 'Alpha · Foreman' }], claudeRoleId: 'qa' });
   const r = asClaude.requests.ask(agentId(A.model, 'foreman'), [{ agent: 'claude', request: 'one' }, { agent: 'claude', request: 'two' }]);
   asClaude.requests.answer(r.id, true);
-  asClaude.store.emit({ type: 'agent', state: 'error', message: 'x' });
+  // Another message's failure is not this step's.
+  asClaude.store.emit({ type: 'agent', state: 'error', message: 'x', ids: ['m_other'] });
+  await flush();
+  assert.equal(asClaude.store.board.colab.request.state, 'playing');
+  asClaude.store.emit({ type: 'agent', state: 'error', message: 'x', ids: [asClaude.dispatched[0].id] });
   await asClaude.requests.settled();
   assert.match(asClaude.last().text, /stopped at step 1 \(Claude\): the answer failed\./);
   assert.equal(asClaude.dispatched.length, 1);
@@ -248,4 +254,24 @@ test('a restart drops the request with a note', () => {
   assert.equal(last().text, "The foreman's request was dropped when the server restarted.");
   assert.equal(last().role, 'claude');
   cleanup();
+});
+
+test('cancel takes the step off its agent, so a queued answer finds nothing to do; a Claude step is cut too', async () => {
+  const card = setup();
+  const { id } = card.requests.ask('claude', [{ agent: 'systems', request: 'one' }]);
+  card.requests.answer(id, true);
+  card.requests.cancel();
+  await card.requests.settled();
+  assert.deepEqual(card.store.board.chat.find((m) => m.id === card.dispatched[0].id).owed, []);
+  card.cleanup();
+
+  const asClaude = setup({ cards: [{ ...A, roleId: 'foreman', name: 'Alpha · Foreman' }], claudeRoleId: 'qa' });
+  const r = asClaude.requests.ask(agentId(A.model, 'foreman'), [{ agent: 'claude', request: 'one' }]);
+  asClaude.requests.answer(r.id, true);
+  asClaude.requests.cancel();
+  await asClaude.requests.settled();
+  assert.deepEqual(asClaude.cutClaude, [asClaude.dispatched[0].id]);
+  assert.deepEqual(asClaude.store.board.chat.find((m) => m.id === asClaude.dispatched[0].id).owed, []);
+  assert.deepEqual(asClaude.cut, []);
+  asClaude.cleanup();
 });

@@ -520,3 +520,59 @@ process.stdout.write(JSON.stringify({ result: 'Pruned.', session_id: 's_p' }));
     fs.rmSync(dir, { recursive: true });
   }
 });
+
+// A claude that fails after `ms`, or (with no ms) hangs until killed.
+const failingClaude = (ms) => `#!/usr/bin/env node
+require('node:fs').readFileSync(0, 'utf8');
+${ms === undefined ? 'setInterval(() => {}, 1000);' : `setTimeout(() => { process.stdout.write(JSON.stringify({ is_error: true, result: 'boom' })); process.exit(1); }, ${ms});`}
+`;
+
+function binaryAgent(script) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
+  const bin = path.join(dir, 'claude');
+  fs.writeFileSync(bin, script, { mode: 0o755 });
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const agent = new Agent(store, { attached: () => false }, { mcpUrl: 'http://127.0.0.1:1/mcp', cwd: dir, claudeBin: bin, log: () => {} });
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  const cleanup = () => {
+    store.historyLog.flush();
+    fs.rmSync(dir, { recursive: true });
+  };
+  return { store, agent, events, cleanup };
+}
+
+test("a failed chat answer's error names the messages it was answering", async () => {
+  const { store, agent, events, cleanup } = binaryAgent(failingClaude(20));
+  const { message } = store.apply({ type: 'chat', text: 'q', owed: ['claude'] }, 'user');
+  agent.nudge();
+  await agent.current;
+  const error = events.find((e) => e.type === 'agent' && e.state === 'error');
+  assert.deepEqual(error.ids, [message.id]);
+  cleanup();
+});
+
+test('a chat answer that throws still reports an error naming its messages', async () => {
+  const { store, agent, events, cleanup } = binaryAgent(FAKE_CLAUDE);
+  const { message } = store.apply({ type: 'chat', text: 'x'.repeat(19_995), owed: ['claude'] }, 'user');
+  agent.nudge();
+  await agent.current;
+  const error = events.find((e) => e.type === 'agent' && e.state === 'error');
+  assert.deepEqual(error?.ids, [message.id]);
+  cleanup();
+});
+
+test('cutAnswer stops the chat answer working on that message, and only that one', async () => {
+  const { store, agent, events, cleanup } = binaryAgent(failingClaude());
+  const { message } = store.apply({ type: 'chat', text: 'q', owed: ['claude'] }, 'user');
+  agent.nudge();
+  agent.cutAnswer('m_other');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(agent.running, true);
+  agent.cutAnswer(message.id);
+  await agent.current;
+  assert.equal(agent.running, false);
+  assert.ok(events.some((e) => e.type === 'agent' && e.state === 'error'));
+  assert.equal(store.board.chat.length, 1);
+  cleanup();
+});
