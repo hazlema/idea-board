@@ -918,9 +918,10 @@ test('a section back under the limit prunes again as soon as it is over, without
   assert.equal(script.pruner.calls.length, 2);
 });
 
-test('a pass that brings a section under the limit does not hold it back from the next', async () => {
-  const script = sizeScript({ turns: [{ brainstorm: 85_000 }, { brainstorm: 81_000 }], passes: [{ brainstorm: 79_000 }] });
-  const { store, run } = setup({ agents: [A], rounds: 2, ...script });
+test('a pass that only just brings a section under still waits for it to regrow', async () => {
+  // A gentle pass: 85,000 → 79,000. Back over at 81,000 and 88,000 (under 79,000 + regrow), then 89,000.
+  const script = sizeScript({ turns: [{ brainstorm: 85_000 }, { brainstorm: 81_000 }, { brainstorm: 88_000 }, { brainstorm: 89_000 }], passes: [{ brainstorm: 79_000 }, { brainstorm: 70_000 }] });
+  const { store, run } = setup({ agents: [A], rounds: 4, ...script });
   kickoff(store, run);
   await run.finished;
   assert.equal(script.pruner.calls.length, 2);
