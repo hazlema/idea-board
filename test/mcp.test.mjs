@@ -678,3 +678,31 @@ test("a read-only runner reads but can't change the board", () => withServer(asy
   assert.match(batch.failed.error, /isn't allowed during an audit/);
   assert.equal(JSON.stringify(store.board), before);
 }));
+
+test('ask_agents reaches the requests object as the caller', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-ask-'));
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const asked = [];
+  const requests = { ask: (author, steps) => { asked.push([author, steps]); return { waiting: true, id: 'r_1' }; } };
+  const steps = [{ agent: 'qa', request: 'check it' }];
+  const result = await createToolRunner(store, null, { requests }).call('ask_agents', { steps });
+  assert.deepEqual(asked, [['claude', steps]]);
+  assert.equal(result.waiting, true);
+  assert.equal(result.id, 'r_1');
+  assert.match(result.next, /approve/);
+  await assert.rejects(createToolRunner(store, null).call('ask_agents', { steps }), /Requests are not available here\./);
+  await assert.rejects(createToolRunner(store, null, { requests, readOnly: true }).call('ask_agents', { steps }), /isn't allowed during an audit/);
+  await assert.rejects(createToolRunner(store, null, { requests, prune: 'tok' }).call('ask_agents', { steps }), /isn't allowed during a prune/);
+  const batch = await createToolRunner(store, null, { requests }).call('batch', { calls: [{ tool: 'ask_agents', args: { steps } }] });
+  assert.match(batch.failed.error, /can't run inside a batch/);
+  assert.equal(asked.length, 1);
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('the tool list hides ask_agents unless Claude is the foreman', () => withServer(async ({ rpc, store }) => {
+  const names = async () => (await rpc('tools/list', {})).result.tools.map((t) => t.name);
+  assert.ok((await names()).includes('ask_agents'));
+  store.board.colab.lineup.claudeRoleId = 'qa';
+  assert.ok(!(await names()).includes('ask_agents'));
+}));

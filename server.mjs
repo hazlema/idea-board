@@ -116,7 +116,16 @@ async function colabRoute(run, room, pathname, req, res) {
   } else if (pathname === '/api/colab/reset-spent' && req.method === 'POST') {
     room.resetSpent();
     sendJson(res, 200, { status: run.status });
+  } else if (pathname === '/api/colab/request' && req.method === 'POST') {
+    // The host's answer to the foreman's request; a second tab's answer is a 409.
+    const { id, yes } = (await readBody(req)) ?? {};
+    if (typeof id !== 'string' || typeof yes !== 'boolean') sendJson(res, 400, { error: 'id and yes are required' });
+    else {
+      try { sendJson(res, 200, room.requests.answer(id, yes)); }
+      catch (error) { fail(error); }
+    }
   } else if (pathname === '/api/colab/stop' && req.method === 'POST') {
+    room.requests.cancel();
     run.stop();
     sendJson(res, 200, { status: run.status });
   } else return false;
@@ -128,8 +137,9 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   // A session only sees generate_image while Claude's role can make pictures.
-  const listTools = () => (pictures?.canMake('claude') ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image'));
-  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools });
+  // ask_agents only while Claude holds the Foreman role.
+  const listTools = () => TOOLS.filter((t) => (t.name !== 'generate_image' || pictures?.canMake('claude')) && (t.name !== 'ask_agents' || store.board.colab.lineup.claudeRoleId === 'foreman'));
+  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, requests: room.requests, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools });
   // The prune pass's own calls (/mcp?prune=<token>): tagged with its token, without the tools
   // it may not use, and with no presence, so the pass never touches an attached session's chat.
   const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));

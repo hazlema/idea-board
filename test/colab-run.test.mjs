@@ -1313,3 +1313,32 @@ test('Stop aborts an idle audit', async () => {
   await run.settled();
   assert.equal(store.board.chat.at(-1).text, '(stopped partway through my turn)');
 });
+
+test('only a foreman card answering the host is offered ask_agents', async () => {
+  const { store, run, calls } = setup({ agents: [F, A], rounds: 1, complete: () => text('ok') });
+  run.ensureRoster();
+  hostSays(store, 'plan the next step', { owed: [ID_F, ID_A] });
+  run.answer(ID_F);
+  run.answer(ID_A);
+  await run.settled();
+  const offered = (req) => (req.tools ?? []).map((t) => t.function.name);
+  const byModel = (model) => calls.find((c) => c.model === model);
+  assert.ok(offered(byModel(F.model)).includes('ask_agents'));
+  assert.ok(!offered(byModel(A.model)).includes('ask_agents'));
+  // In a run turn even the foreman isn't offered it.
+  calls.length = 0;
+  kickoff(store, run);
+  await run.finished;
+  assert.ok(calls.filter((c) => c.model === F.model).every((c) => !offered(c).includes('ask_agents')));
+});
+
+test('cutAnswer cuts a card answer under way', async () => {
+  const { store, run } = setup({ agents: [A], complete: (req) => new Promise((resolve, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason))) });
+  run.ensureRoster();
+  hostSays(store, 'slow one', { owed: [ID_A] });
+  run.answer(ID_A);
+  await sleep(10);
+  run.cutAnswer(ID_A);
+  await run.settled();
+  assert.equal(chatPosts(store).at(-1).text, '(stopped partway through my turn)');
+});

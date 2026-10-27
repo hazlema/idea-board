@@ -485,3 +485,21 @@ test('/mcp?audit=1 lists only the audit tools and refuses changes', () => withSe
   assert.match(reply.result.content[0].text, /isn't allowed during an audit/);
   assert.equal(JSON.stringify(store.board), before);
 }));
+
+test('POST /api/colab/request answers the waiting request once', () => withServer(async ({ base, store }) => {
+  store.setColabRequest({ id: 'r_1', by: 'claude', at: 'now', state: 'waiting', step: 0, steps: [{ to: 'claude', name: 'Claude', text: 'x' }] });
+  assert.equal((await post(base, '/api/colab/request', { id: 'r_1' })).status, 400);
+  assert.equal((await post(base, '/api/colab/request', { yes: true })).status, 400);
+  const res = await post(base, '/api/colab/request', { id: 'r_1', yes: false });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+  assert.equal(store.board.colab.request, null);
+  assert.equal(store.board.chat.at(-1).text, 'The host declined the request.');
+  assert.equal((await post(base, '/api/colab/request', { id: 'r_1', yes: true })).status, 409);
+}));
+
+test('Stop on the page drops a waiting request', () => withServer(async ({ base, store }) => {
+  store.setColabRequest({ id: 'r_1', by: 'claude', at: 'now', state: 'waiting', step: 0, steps: [{ to: 'claude', name: 'Claude', text: 'x' }] });
+  assert.equal((await post(base, '/api/colab/stop')).status, 200);
+  assert.equal(store.board.colab.request, null);
+}));

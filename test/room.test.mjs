@@ -299,3 +299,27 @@ test('/stop while an audit runs stops it', () => {
   assert.deepEqual(a.room.userChat({ text: '/stop' }), { stopped: true });
   assert.equal(a.calls.stop, 1);
 });
+
+test('/start is refused while a foreman request waits, and /stop drops it', () => {
+  const { room, store, calls } = setup();
+  colabCut(room);
+  room.requests.ask('claude', [{ agent: 'beta', request: 'check it' }]);
+  assert.throws(() => room.userChat({ text: '/start go' }), /Answer the foreman's request, or let it finish, first\./);
+  assert.deepEqual(room.userChat({ text: '/stop' }), { stopped: true });
+  assert.equal(store.board.colab.request, null);
+  assert.equal(calls.stop, 0);
+  assert.throws(() => room.userChat({ text: '/stop' }), /No run is going\./);
+});
+
+test('recover drops a foreman request left from before a restart', () => {
+  const { room, store } = setup();
+  store.board.colab.request = { id: 'r_1', by: 'claude', at: 'then', state: 'waiting', step: 0, steps: [{ to: ID_A, name: 'A', text: 'x' }] };
+  room.recover();
+  assert.equal(store.board.colab.request, null);
+  assert.ok(store.board.chat.some((m) => m.text === "The foreman's request was dropped when the server restarted."));
+});
+
+// The fake colab has no cutAnswer of its own.
+function colabCut(room) {
+  room.colab.cutAnswer ??= () => {};
+}
