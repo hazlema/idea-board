@@ -72,7 +72,7 @@ Flowchart, selecting a card shows its details there instead.
 
 ### Ways to work
 
-There are three ways to use the board, and they all work. Choose by how much
+There are several ways to use the board, and they all work. Choose by how much
 control you want.
 
 **Classic: you and Claude (most control).** Just you and Claude designing the
@@ -98,6 +98,15 @@ ideas).**
 2. On the **Brainstorm** tab, add the mechanics that are non-negotiable.
 3. In your `/start` command, tell the agents you seeded the board and that they
    have to fill it in.
+
+**Feature building: hand the foreman a feature.** With no run going, ask the
+foreman to implement a new feature and he delegates it: he splits it into steps
+for the right agents and asks you to approve the list (see Foreman requests
+below). There's no need to start a run just to get one change made. For example:
+
+> Before every game there should be an instructions page, leaning heavily on the
+> Halloween aesthetic. Maybe it's a full-screen page with a button that begins the
+> game. Please delegate using ask_agents.
 
 ### Collaborate
 
