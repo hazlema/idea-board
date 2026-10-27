@@ -100,3 +100,10 @@ test('passText falls back to the default', () => {
   assert.equal(passText({ rules: '', roles: [] }, 'audit'), DEFAULT_AUDIT_TEXT);
   assert.equal(passText({ rules: '', roles: [], passes: { prune: 'Mine' } }, 'prune'), 'Mine');
 });
+
+test("a request step reads as the foreman's request, approved by the host", () => {
+  const board = emptyBoard();
+  board.colab = { roster: [X, Y], claudeName: 'Claude · Foreman' };
+  board.chat.push({ id: 'm1', role: 'user', text: 'Check the numbers.', at: '', to: [Y.id], owed: [Y.id], request: { by: 'claude', step: 1, of: 2 } });
+  assert.ok(turnMessage(board, Y).includes("Host (to Y · QA), passing on Claude · Foreman's request, which the host approved: Check the numbers."));
+});

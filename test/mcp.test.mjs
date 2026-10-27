@@ -706,3 +706,11 @@ test('the tool list hides ask_agents unless Claude is the foreman', () => withSe
   store.board.colab.lineup.claudeRoleId = 'qa';
   assert.ok(!(await names()).includes('ask_agents'));
 }));
+
+test("the binary's prompt says a request step is the foreman's, approved by the host", () => {
+  const board = { colab: { roster: [], claudeName: 'Claude' } };
+  const card = { id: 'agent:x=foreman', name: 'X · Foreman' };
+  board.colab.roster.push(card);
+  const prompt = buildPrompt([{ id: 'm1', role: 'user', text: 'rework the saves', request: { by: card.id, step: 1, of: 1 } }], board);
+  assert.equal(prompt, "[X · Foreman's request, approved by the host]\nrework the saves");
+});

@@ -109,12 +109,14 @@ What you type decides who answers:
 | `What do you think of this?` | Everyone connected answers once, at the same time, in their own role. They don't read each other's answers to it. |
 | `/chat 2 What do you think?` (or `/c 2 …`) | Only connection 2 answers. The others see the message later but don't reply. |
 | `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
-| `/stop` | Ends the run after the current turn (same as **Stop**). |
+| `/stop` | Ends the run after the current turn (same as **Stop**). Also drops a foreman's request that is waiting, or the rest of one under way. |
 | `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, plain bullets included, without touching accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |
 | `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. Read-only: it changes nothing on the board. Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
 | `//hello` | Sends `/hello` as plain text. |
 
 **Final audit.** At the end of a run the Foreman audits the board once (switch it off under **⋯ → Settings → Audit at the end of a run**), and `/audit` does the same on demand. Claude audits when its role is the Foreman; otherwise the first card with the Foreman role that can answer does; otherwise Claude through the `claude` command. If none of those is available, `/audit` is refused. The audit is read-only (the server enforces it), runs in a fresh session and posts its report in the chat. Its instructions are the "Final audit" text under **Edit roles… → Passes**, where the Prune text is also editable.
+
+**Foreman requests.** Outside a run, whoever holds the Foreman role can ask other agents for work (the `ask_agents` tool): a list of steps, each one agent and what to do. A box opens on the page with the whole list, and nothing is sent until you press **Yes, send it**. Then the steps go out in order, each after the agent before it has answered, as your message to that agent marked as the foreman's request. **No** just says so in the chat. Only one request at a time; `/start` waits until it is answered or done; **Stop** drops the rest. If a step's agent can't answer, the chain stops there with a note. During a run the foreman steers through the chat instead.
 
 Pruning is tuned under **⋯ → Settings → Pruning**: a mechanics limit (blank means no limit) and how aggressive the pass is (Gentle, Normal or Aggressive). New ideas get one pass before they can be cut, and cut mechanics go on the ruled-out list with a reason starting "cut by prune:". A pass's chat note gives each section's size before and after; if a section is still over its limit, it says so: raise Aggressiveness and run `/prune` again.
 
@@ -126,7 +128,7 @@ connected, your message is still posted with a note saying so.
 A command that can't work is not sent: an unknown command, `/chat` with a
 number that has no connection (or Claude when it is not connected, or a card
 that is over budget), `/chat` or `/start` with no text, `/start` while a run
-is going, `/stop` with no run. Your text stays in the box with the reason.
+is going or while a foreman's request is open, `/stop` with nothing to stop. Your text stays in the box with the reason.
 While the box starts with `/`, a line under it lists the commands. **Shift+↑**
 brings back what you sent before, as you typed it (commands included);
 **Shift+↓** goes forward again. Plain arrows just move the cursor. The last

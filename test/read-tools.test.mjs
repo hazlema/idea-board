@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createToolRunner, TOOLS, MAX_CHAT_CHARS } from '../lib/mcp-tools.mjs';
+import { createToolRunner, TOOLS, MAX_CHAT_CHARS, unansweredChat } from '../lib/mcp-tools.mjs';
 import { AUDIT_TOOLS } from '../lib/audit.mjs';
 import { BoardStore } from '../lib/store.mjs';
 
@@ -139,4 +139,15 @@ test('the board readers count as looking at the board; all four stay open during
   store.endPrune();
   // view_chat shows none of the board, so it leaves the board changes to be reported.
   assert.equal(seen, 3);
+}));
+
+test('a request step in the chat says whose request it passes on', () => withStore(async (store) => {
+  addQa(store);
+  store.board.colab.claudeName = 'Claude · Foreman';
+  say(store, 'user', 'check it', { to: ['agent:x=qa'], owed: ['agent:x=qa'], request: { by: 'claude', step: 1, of: 1 } });
+  const view = await createToolRunner(store, null, { author: 'agent:x=qa' }).call('view_chat', {});
+  assert.equal(view.messages[0].request_from, 'Claude · Foreman');
+  assert.equal(view.unanswered[0].request_from, 'Claude · Foreman');
+  say(store, 'user', 'for claude', { owed: ['claude'], request: { by: 'agent:x=qa', step: 1, of: 1 } });
+  assert.equal(unansweredChat(store.board)[0].request_from, 'X · QA');
 }));
