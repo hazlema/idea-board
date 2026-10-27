@@ -337,3 +337,7 @@ npm run check     # svelte-check / TypeScript
 npm run lint      # ESLint
 npm run build     # production build into dist/
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

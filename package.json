@@ -2,6 +2,7 @@
   "name": "idea-board",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A shared whiteboard for brainstorming with Claude: a brief, a brainstorm canvas, a flowchart, chat, and an MCP connector.",
   "type": "module",
   "bin": {

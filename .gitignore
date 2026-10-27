@@ -2,3 +2,8 @@ node_modules/
 *.tmp
 .superpowers/
 dist/
+# Local boards, their history and pictures, and browser-test output
+idea-board.json
+idea-board.history.jsonl
+*.assets/
+.playwright-mcp/
