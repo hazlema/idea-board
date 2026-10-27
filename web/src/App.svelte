@@ -4,6 +4,7 @@
   import { live } from '$lib/live.svelte';
   import TopBar from './components/TopBar.svelte';
   import ChatWindow from './components/ChatWindow.svelte';
+  import RequestDialog from './components/RequestDialog.svelte';
   import Toast from './components/Toast.svelte';
   import MemoryPanel from './memory/MemoryPanel.svelte';
   import { preview } from './memory/preview.svelte';
@@ -50,5 +51,6 @@
   {#if live.board && chatPrefs.popped}
     <ChatWindow />
   {/if}
+  <RequestDialog />
   <Toast />
 </div>

@@ -100,3 +100,8 @@ export async function resetSpent(): Promise<RunStatus> {
 export async function stopColab(): Promise<RunStatus> {
   return (await post<{ status: RunStatus }>('/api/colab/stop')).status;
 }
+
+/** The host's Yes or No to the foreman's request. */
+export async function answerRequest(id: string, yes: boolean): Promise<void> {
+  await post('/api/colab/request', { id, yes });
+}

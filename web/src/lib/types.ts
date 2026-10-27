@@ -146,6 +146,19 @@ export interface ChatMessage {
   context?: Pointer[];
   /** On an agent's note: what its turn took. */
   stats?: TurnStats;
+  /** A host message passing on the foreman's request: who asked, and which step of how many. */
+  request?: { by: Author; step: number; of: number };
+}
+
+/** The foreman's request: waiting for the host's Yes or No, or playing out step by step. */
+export interface ForemanRequest {
+  id: string;
+  by: Author;
+  at: string;
+  state: 'waiting' | 'playing';
+  /** The step under way while playing (from 0). */
+  step: number;
+  steps: { to: string; name: string; text: string }[];
 }
 
 export interface TurnStats {
@@ -198,6 +211,8 @@ export interface Colab {
   claudeName: string;
   /** When the last prune pass ended, or null. */
   lastPruneAt: string | null;
+  /** The foreman's request, while one is open. */
+  request?: ForemanRequest | null;
 }
 
 /** The texts of the one-off passes; a missing one means the default. */

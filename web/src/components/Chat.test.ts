@@ -324,3 +324,22 @@ test('declining the confirmation keeps the /prune in the box and sends nothing m
   expect(api.op).toHaveBeenCalledTimes(1);
   ask.mockRestore();
 });
+
+test("a request step is labelled as the foreman's, approved", () => {
+  const board = emptyBoard();
+  board.colab.claudeName = 'Claude · Foreman';
+  board.chat = [{ id: 'm1', role: 'user', text: 'check it', at: '', to: ['claude'], owed: [], request: { by: 'claude', step: 1, of: 2 } }];
+  live.board = board;
+  render(Chat);
+  expect(screen.getByText("· Claude · Foreman's request (1 of 2), approved")).toBeInTheDocument();
+});
+
+test('Stop shows while a foreman request plays', async () => {
+  const board = emptyBoard();
+  board.colab.request = { id: 'r_1', by: 'claude', at: '', state: 'playing', step: 0, steps: [{ to: 'claude', name: 'Claude', text: 'x' }] };
+  live.board = board;
+  live.colab = { state: 'idle', round: 0, rounds: 0, current: null, spent: 0, budget: 5, claude: 'binary', connections: {} };
+  render(Chat);
+  await fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(api.stopColab).toHaveBeenCalled();
+});

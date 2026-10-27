@@ -170,7 +170,7 @@
       style:color={turnColor}
       aria-live="polite">{status}</span
     >
-    {#if running || live.colab?.pruning || live.colab?.prunePending || live.colab?.auditing}
+    {#if running || live.colab?.pruning || live.colab?.prunePending || live.colab?.auditing || live.board?.colab?.request?.state === 'playing'}
       <button
         class="shrink-0 rounded-md border border-line px-2 py-0.5 hover:bg-raised disabled:opacity-50"
         disabled={live.colab?.state === 'stopping'}
@@ -199,7 +199,7 @@
       {#if item.message}
         {@const message = item.message}
         <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {isAi(message.role) ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
-          <div class="text-[0.8em] font-medium" style:color={authorColor(live.board, message.role)}>{authorName(live.board, message.role)}{#if message.to?.length}<span class="ml-1.5 text-muted">→ {message.to.map(targetTag).join(', ')}</span>{/if}{#if message.start}<span class="ml-1.5 text-muted">▶ run started</span>{/if}</div>
+          <div class="text-[0.8em] font-medium" style:color={authorColor(live.board, message.role)}>{authorName(live.board, message.role)}{#if message.to?.length}<span class="ml-1.5 text-muted">→ {message.to.map(targetTag).join(', ')}</span>{/if}{#if message.request}<span class="ml-1.5 text-muted">· {authorName(live.board, message.request.by)}'s request ({message.request.step} of {message.request.of}), approved</span>{/if}{#if message.start}<span class="ml-1.5 text-muted">▶ run started</span>{/if}</div>
           <div class="break-words whitespace-pre-wrap">{message.text}</div>
           {#if message.stats}
             <div class="mt-1 text-[0.75em] text-muted">{turnLine(message.stats)}</div>
