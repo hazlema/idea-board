@@ -70,6 +70,35 @@ Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**, **Collaborate**.
 The side panel shows **Memory** (tabs **Ruled out** and **History**); on
 Flowchart, selecting a card shows its details there instead.
 
+### Ways to work
+
+There are three ways to use the board, and they all work. Choose by how much
+control you want.
+
+**Classic: you and Claude (most control).** Just you and Claude designing the
+game together in the chat. You decide what goes on the board, turn by turn.
+
+**Narrative: give the agents a story (less control, but you can steer).** Put a
+paragraph of narrative in your `/start` command and tell them to build a game from
+it. The agents take it from there in their run, and you steer by chatting while
+they work. For example:
+
+> `/start` Build a game from this. Scooby-Doo-style "Lost Pumpkins in the
+> Graveyard" Halloween mystery game. Kids (or a family/group) are
+> trick-or-treating when they wander into an old graveyard on Halloween night.
+> The town's prize pumpkins have gone missing: someone (or something) stole
+> them. Now the kids have to search the graveyard, follow clues, solve puzzles,
+> and get the pumpkins back before the "monster" (or the real prankster) makes
+> off with them for good. Classic Scooby energy: spooky setting, light scares,
+> teamwork, costumes, and a fun reveal.
+
+**Seeded: lay the foundation, let them build on it (your must-haves, their
+ideas).**
+1. Fill out the **Brief**.
+2. On the **Brainstorm** tab, add the mechanics that are non-negotiable.
+3. In your `/start` command, tell the agents you seeded the board and that they
+   have to fill it in.
+
 ### Collaborate
 
 The chat with Claude, on a page of its own. The slider in its header sets the
