@@ -157,7 +157,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · /audit · ↑ for earlier messages')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · /audit · Shift+↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
@@ -210,31 +210,62 @@ test("an agent's note ends with what its turn took: time, cost, calls and the sh
   expect(screen.getByText('1 min 42 s · $0.031 · 3 calls · 68% read from cache')).toBeInTheDocument();
 });
 
-test('Up brings back earlier messages as typed, Down comes back to the empty box', async () => {
+test('Shift+Up brings back earlier messages as typed, Shift+Down comes back to the empty box', async () => {
   render(Chat);
   const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
   await typeAndSend('/chat 2 first');
   await typeAndSend('/start second');
   await waitFor(() => expect(input.value).toBe(''));
 
-  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  await fireEvent.keyDown(input, { key: 'ArrowUp', shiftKey: true });
   expect(input.value).toBe('/start second');
-  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  await fireEvent.keyDown(input, { key: 'ArrowUp', shiftKey: true });
   expect(input.value).toBe('/chat 2 first');
   await waitFor(() => expect(input.selectionStart).toBe('/chat 2 first'.length));
-  await fireEvent.keyDown(input, { key: 'ArrowDown' });
-  await fireEvent.keyDown(input, { key: 'ArrowDown' });
+  await fireEvent.keyDown(input, { key: 'ArrowDown', shiftKey: true });
+  await fireEvent.keyDown(input, { key: 'ArrowDown', shiftKey: true });
   expect(input.value).toBe('');
 });
 
-test('Up inside a message of several lines moves the cursor, not through history', async () => {
+test('plain Up and Down move the cursor and never go through history', async () => {
   render(Chat);
   const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
   await typeAndSend('sent before');
-  await fireEvent.input(input, { target: { value: 'line one\nline two' } });
-  input.setSelectionRange(12, 12);
+  await waitFor(() => expect(input.value).toBe(''));
   await fireEvent.keyDown(input, { key: 'ArrowUp' });
-  expect(input.value).toBe('line one\nline two');
+  expect(input.value).toBe('');
+  await fireEvent.input(input, { target: { value: 'a long line that wraps' } });
+  await fireEvent.keyDown(input, { key: 'ArrowUp' });
+  await fireEvent.keyDown(input, { key: 'ArrowDown' });
+  expect(input.value).toBe('a long line that wraps');
+});
+
+/** jsdom has no layout, so give the log a size: 1000 px of messages in a 200 px window. */
+function sizeLog(log: HTMLElement): void {
+  Object.defineProperty(log, 'scrollHeight', { configurable: true, get: () => 1000 });
+  Object.defineProperty(log, 'clientHeight', { configurable: true, get: () => 200 });
+}
+
+test('a new message keeps the newest in view when you are at the bottom', async () => {
+  render(Chat);
+  const log = screen.getByRole('log');
+  sizeLog(log);
+  log.scrollTop = 800;
+  await fireEvent.scroll(log);
+  live.board!.chat = [...live.board!.chat, { id: 'n1', role: 'claude', text: 'new', at: new Date().toISOString() }];
+  await tick();
+  expect(log.scrollTop).toBe(1000);
+});
+
+test('a new message leaves you where you are when you have scrolled back', async () => {
+  render(Chat);
+  const log = screen.getByRole('log');
+  sizeLog(log);
+  log.scrollTop = 100;
+  await fireEvent.scroll(log);
+  live.board!.chat = [...live.board!.chat, { id: 'n2', role: 'claude', text: 'new', at: new Date().toISOString() }];
+  await tick();
+  expect(log.scrollTop).toBe(100);
 });
 
 test('an idle prune pass shows the working line', () => {

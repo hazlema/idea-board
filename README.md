@@ -127,10 +127,10 @@ A command that can't work is not sent: an unknown command, `/chat` with a
 number that has no connection (or Claude when it is not connected, or a card
 that is over budget), `/chat` or `/start` with no text, `/start` while a run
 is going, `/stop` with no run. Your text stays in the box with the reason.
-While the box starts with `/`, a line under it lists the commands. **↑** on
-the box's first line brings back what you sent before, as you typed it
-(commands included); **↓** goes forward again. The last 50 are kept in this
-browser.
+While the box starts with `/`, a line under it lists the commands. **Shift+↑**
+brings back what you sent before, as you typed it (commands included);
+**Shift+↓** goes forward again. Plain arrows just move the cursor. The last
+50 are kept in this browser.
 
 Everyone, Claude included, changes the board the same way and takes part in
 `/start` runs. Each OpenRouter connection posts in the chat as "Model · Role".

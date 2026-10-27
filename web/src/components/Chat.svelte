@@ -18,7 +18,7 @@
 
   const MAX_LABEL = 200;
   const PLACEHOLDER = 'Message everyone, or /chat N to ask one… (Enter to send, Shift+Enter for a new line)';
-  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop · /prune · /audit · ↑ for earlier messages';
+  const COMMANDS_HINT = '/chat N (or /c N) · /start · /stop · /prune · /audit · Shift+↑ for earlier messages';
 
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);
@@ -96,12 +96,21 @@
 
   const showHint = $derived(draft.trimStart().startsWith('/'));
 
-  // Keep the newest message in view (also when the text size changes).
+  // Within this many px of the bottom counts as reading the newest.
+  const AT_BOTTOM = 40;
+  // False once you scroll back, so new messages don't pull you down; scrolling to the bottom sets it again.
+  let following = true;
+
+  function onscroll(): void {
+    if (log) following = log.scrollHeight - log.scrollTop - log.clientHeight <= AT_BOTTOM;
+  }
+
+  // Keep the newest message in view (also when the text size changes), unless you have scrolled back.
   $effect(() => {
     void items.length;
     void chatPrefs.fontSize;
     void working.length;
-    if (log) log.scrollTop = log.scrollHeight;
+    if (log && following) log.scrollTop = log.scrollHeight;
   });
 
   function contextFor(pointer: Pointer | null): Pointer[] | undefined {
@@ -124,12 +133,9 @@
     }
   }
 
-  // Up on the first line brings back what was sent before; Down on the last line comes forward.
+  // Shift+Up brings back what was sent before; Shift+Down comes forward. Plain arrows move the cursor.
   async function recall(event: KeyboardEvent, box: HTMLTextAreaElement): Promise<void> {
-    const { selectionStart: start, selectionEnd: end, value } = box;
-    const up = event.key === 'ArrowUp';
-    if (start !== end || (up ? value.lastIndexOf('\n', start - 1) !== -1 : value.indexOf('\n', end) !== -1)) return;
-    const next = up ? chatHistory.older(value) : chatHistory.newer();
+    const next = event.key === 'ArrowUp' ? chatHistory.older(box.value) : chatHistory.newer();
     if (next === null) return;
     event.preventDefault();
     draft = next;
@@ -141,7 +147,7 @@
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       void submit();
-    } else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+    } else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
       void recall(event, event.currentTarget as HTMLTextAreaElement);
     }
   }
@@ -180,7 +186,7 @@
     {@render controls?.()}
   </div>
 
-  <div bind:this={log} class="flex min-h-0 flex-1 flex-col gap-[0.6em] overflow-y-auto px-4 py-3 leading-normal">
+  <div bind:this={log} {onscroll} role="log" aria-label="Messages" class="flex min-h-0 flex-1 flex-col gap-[0.6em] overflow-y-auto px-4 py-3 leading-normal">
     {#each items as item (item.key)}
       {#if item.message}
         {@const message = item.message}
