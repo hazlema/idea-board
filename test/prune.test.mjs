@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
-import { PRUNE_SYSTEM_PROMPT, PRUNE_THRESHOLD, PRUNE_REGROW, SECTION_LIMIT, SECTIONS, boardSize, sectionSizes, sectionsOver, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
+import { PRUNE_SYSTEM_PROMPT, PRUNE_REGROW, SECTION_LIMIT, SECTIONS, sectionSizes, sectionsOver, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
 
 const A = `${'a'.repeat(32)}.png`;
 
@@ -29,13 +29,6 @@ function sample() {
 
 const refuses = (b, op) => assert.throws(() => pruneGuard(b, op), OpError, JSON.stringify(op));
 const allows = (b, op) => assert.doesNotThrow(() => pruneGuard(b, op), JSON.stringify(op));
-
-test('boardSize equals the view_board JSON length', () => {
-  const { b } = sample();
-  const store = { board: b, history: () => ({ entries: [] }) };
-  assert.equal(boardSize(store), JSON.stringify(boardView(store)).length);
-  assert.ok(PRUNE_THRESHOLD === 45_000 && PRUNE_REGROW === 10_000);
-});
 
 test('pruneGuard refuses changes to the law', () => {
   const s = sample();

@@ -10,7 +10,7 @@ import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
-import { PRUNE_REGROW, Pruner } from '../lib/prune.mjs';
+import { PRUNE_REGROW, SECTIONS, Pruner } from '../lib/prune.mjs';
 import { AUDIT_FRAME, AUDIT_TOOLS } from '../lib/audit.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
@@ -20,7 +20,7 @@ const ID_B = agentId(B.model, B.roleId);
 const presence = { attached: () => false };
 const noClaude = { via: () => 'none', takeTurn: async () => ({ ok: false, error: 'no claude' }) };
 
-function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence, pruner, sizeOf, auditAtEnd = false } = {}) {
+function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversation, turnLimit, closingLimit, models = null, claude = noClaude, presence: present = presence, pruner, sizesOf, auditAtEnd = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   // Most tests leave the final audit out; its own tests turn it on.
@@ -35,7 +35,7 @@ function setup({ agents = [A, B], rounds = 2, budget = 5, complete, maxConversat
       return complete(req, calls.length);
     },
   };
-  const run = new ColabRun({ store, presence: present, claude, library: new Library(path.join(dir, 'colab.json')), openrouter, maxConversation, turnLimit, closingLimit, pruner, sizeOf });
+  const run = new ColabRun({ store, presence: present, claude, library: new Library(path.join(dir, 'colab.json')), openrouter, maxConversation, turnLimit, closingLimit, pruner, sizesOf });
   return { dir, store, run, calls };
 }
 
@@ -793,7 +793,8 @@ test('generate_image reads as making a picture, then made a picture', () => {
 });
 
 // A pruner that records its calls; `run` scripts a pass (default: done at once).
-function fakePruner({ available = true, run = async () => ({ ok: true, before: 0, after: 0 }) } = {}) {
+const SMALL = { brief: 0, brainstorm: 0, flow: 0 };
+function fakePruner({ available = true, run = async (opts) => ({ ok: true, started: true, sections: opts.sections ?? SECTIONS }) } = {}) {
   const calls = [];
   return { calls, available: () => available, run: async (opts) => { calls.push(opts); return run(opts); } };
 }
@@ -807,7 +808,7 @@ test('/prune while idle runs after answers in flight finish', async () => {
   const answering = gate();
   const order = [];
   const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
-  const { store, run } = setup({ agents: [A], pruner, sizeOf: () => 0, turnLimit: 1234, complete: async () => { await answering.promise; order.push('answer'); return text('hello'); } });
+  const { store, run } = setup({ agents: [A], pruner, sizesOf: () => SMALL, turnLimit: 1234, complete: async () => { await answering.promise; order.push('answer'); return text('hello'); } });
   run.ensureRoster();
   hostSays(store, 'hi', { owed: [ID_A] });
   run.answer(ID_A);
@@ -848,7 +849,7 @@ test('/prune during a run runs once, after the current round, and the run carrie
   });
   const made = setup({
     pruner,
-    sizeOf: () => 0,
+    sizesOf: () => SMALL,
     complete: (req) => {
       order.push(req.model);
       if (order.length === 1) {
@@ -870,15 +871,68 @@ test('/prune during a run runs once, after the current round, and the run carrie
   assert.equal(run.status.connections.claude.state, 'waiting');
 });
 
-test(`an automatic pass runs between rounds once the board is over the threshold, and not again until it grows ${PRUNE_REGROW} more`, async () => {
-  const order = [];
-  const sizes = [50_000, 48_000, 49_000, 58_500, 50_000];
-  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
-  const { store, run } = setup({ agents: [A], rounds: 3, pruner, sizeOf: () => sizes.shift() ?? 0, complete: () => { order.push('turn'); return text('done'); } });
+// Section sizes the turns and passes change, as the board would: `turns[i]` and `passes[i]`
+// patch them during the i-th turn and pass.
+function sizeScript({ turns = [], passes = [] }) {
+  const sizes = { ...SMALL };
+  let turn = 0;
+  let pass = 0;
+  return {
+    sizesOf: () => ({ ...sizes }),
+    complete: () => { Object.assign(sizes, turns[turn++] ?? {}); return text('done'); },
+    pruner: fakePruner({ run: async (opts) => { Object.assign(sizes, passes[pass++] ?? {}); return { ok: true, started: true, sections: opts.sections ?? ['brainstorm'] }; } }),
+  };
+}
+
+test(`an automatic pass prunes only the sections over the limit, and each again only after it regrows ${PRUNE_REGROW}`, async () => {
+  const script = sizeScript({
+    turns: [{ brainstorm: 85_000 }, { brainstorm: 90_000 }, { brainstorm: 92_000, flow: 81_000 }, {}],
+    passes: [{ brainstorm: 82_000 }, { brainstorm: 70_000, flow: 60_000 }],
+  });
+  const { store, run } = setup({ agents: [A], rounds: 4, ...script });
   kickoff(store, run);
   await run.finished;
-  assert.deepEqual(order, ['turn', 'prune', 'turn', 'turn', 'prune']);
-  assert.equal(pruner.calls[0].guidance, '');
+  assert.deepEqual(script.pruner.calls.map((c) => c.sections), [['brainstorm'], ['brainstorm', 'flow']]);
+  assert.equal(script.pruner.calls[0].guidance, '');
+});
+
+test('a host /prune records what it left, so the next round does not prune that section again', async () => {
+  let run;
+  const script = sizeScript({ turns: [{ brainstorm: 85_000 }, { brainstorm: 83_000 }], passes: [{ brainstorm: 82_000 }] });
+  const complete = script.complete;
+  script.complete = (req) => { if (!script.pruner.calls.length && !run.status.prunePending) run.prune({}); return complete(req); };
+  const made = setup({ agents: [A], rounds: 2, ...script });
+  run = made.run;
+  kickoff(made.store, run);
+  await run.finished;
+  assert.equal(script.pruner.calls.length, 1);
+  assert.equal(script.pruner.calls[0].sections, undefined);
+});
+
+test('a section back under the limit prunes again as soon as it is over, without waiting to regrow', async () => {
+  // Pruned to 82,000 (still over); cut by hand to 70,000; then over again below 82,000 + regrow.
+  const script = sizeScript({ turns: [{ brainstorm: 85_000 }, { brainstorm: 70_000 }, { brainstorm: 81_000 }], passes: [{ brainstorm: 82_000 }] });
+  const { store, run } = setup({ agents: [A], rounds: 3, ...script });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(script.pruner.calls.length, 2);
+});
+
+test('a pass that brings a section under the limit does not hold it back from the next', async () => {
+  const script = sizeScript({ turns: [{ brainstorm: 85_000 }, { brainstorm: 81_000 }], passes: [{ brainstorm: 79_000 }] });
+  const { store, run } = setup({ agents: [A], rounds: 2, ...script });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(script.pruner.calls.length, 2);
+});
+
+test('a pass that did not start records nothing', async () => {
+  const sizes = { ...SMALL, brainstorm: 85_000 };
+  const pruner = fakePruner({ run: async () => ({ ok: false, started: false }) });
+  const { store, run } = setup({ agents: [A], rounds: 2, pruner, sizesOf: () => ({ ...sizes }), complete: () => text('done') });
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(pruner.calls.length, 2);
 });
 
 test('Stop during a pass aborts it and ends the run', async () => {
@@ -890,7 +944,7 @@ test('Stop during a pass aborts it and ends the run', async () => {
       setTimeout(() => target.stop(), 5);
     }),
   });
-  const { run } = setup({ pruner, sizeOf: () => 0, complete: () => text('done') });
+  const { run } = setup({ pruner, sizesOf: () => SMALL, complete: () => text('done') });
   target = run;
   // While idle.
   run.prune({});
@@ -902,7 +956,7 @@ test('Stop during a pass aborts it and ends the run', async () => {
   const posts = [];
   const second = setup({
     pruner,
-    sizeOf: () => 0,
+    sizesOf: () => SMALL,
     complete: (req) => {
       posts.push(req.model);
       if (posts.length === 1) second.run.prune({});
@@ -924,7 +978,7 @@ test("a card's answer waits for a pass in flight, and a run can't start during o
   const pass = gate();
   const order = [];
   const pruner = fakePruner({ run: async () => { await pass.promise; order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
-  const { store, run, calls } = setup({ agents: [A], pruner, sizeOf: () => 0, complete: () => { order.push('answer'); return text('hello'); } });
+  const { store, run, calls } = setup({ agents: [A], pruner, sizesOf: () => SMALL, complete: () => { order.push('answer'); return text('hello'); } });
   run.prune({});
   await sleep(5);
   assert.equal(pruner.calls.length, 1);
@@ -942,7 +996,7 @@ test("a card's answer waits for a pass in flight, and a run can't start during o
 
 test('with no binary an automatic pass is skipped with a note, once per run', async () => {
   const pruner = fakePruner({ available: false });
-  const { store, run } = setup({ pruner, sizeOf: () => 50_000, complete: () => text('done') });
+  const { store, run } = setup({ pruner, sizesOf: () => ({ ...SMALL, brainstorm: 85_000 }), complete: () => text('done') });
   const skips = () => store.board.chat.filter((m) => m.text === 'Skipped pruning: it needs the claude command.').length;
   kickoff(store, run);
   await run.finished;
@@ -955,7 +1009,7 @@ test('with no binary an automatic pass is skipped with a note, once per run', as
 
 test('a pass that fails to start is noted and the run is not stuck', async () => {
   const pruner = fakePruner({ run: async () => { throw new Error('disk full'); } });
-  const { store, run } = setup({ pruner, sizeOf: () => 0, complete: () => text('done') });
+  const { store, run } = setup({ pruner, sizesOf: () => SMALL, complete: () => text('done') });
   run.prune({});
   await run.settled();
   assert.match(store.board.chat.at(-1).text, /disk full/);
@@ -968,13 +1022,13 @@ test('a pass that fails to start is noted and the run is not stuck', async () =>
 test('a pass asked for in a run that ends early runs after it; after Stop it is dropped', async () => {
   const pruner = fakePruner();
   let run;
-  const made = setup({ budget: 0.05, pruner, sizeOf: () => 0, complete: () => { run.prune({}); return text('done'); } });
+  const made = setup({ budget: 0.05, pruner, sizesOf: () => SMALL, complete: () => { run.prune({}); return text('done'); } });
   run = made.run;
   kickoff(made.store, run);
   await run.settled();
   assert.equal(pruner.calls.length, 1);
 
-  const second = setup({ pruner, sizeOf: () => 0, complete: () => { second.run.prune({}); second.run.stop(); return text('done'); } });
+  const second = setup({ pruner, sizesOf: () => SMALL, complete: () => { second.run.prune({}); second.run.stop(); return text('done'); } });
   kickoff(second.store, second.run);
   await second.run.settled();
   assert.equal(pruner.calls.length, 1);
@@ -998,7 +1052,7 @@ test("an idle /prune waits for Claude's chat run in flight; its edit to a plain 
       return { ok: true, text: 'pruned' };
     },
   };
-  const { store, run } = setup({ agents: [A], claude, sizeOf: () => 0, complete: () => text('x') });
+  const { store, run } = setup({ agents: [A], claude, sizesOf: () => SMALL, complete: () => text('x') });
   run.pruner = new Pruner({ store, agent: claude });
   const group = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user').object;
   claude.running = true;
@@ -1021,7 +1075,7 @@ test('prunePending is set from /prune until the pass ends, and a run cannot star
   const answering = gate();
   const pass = gate();
   const pruner = fakePruner({ run: async () => { await pass.promise; return { ok: true, started: true, before: 1, after: 1 }; } });
-  const { store, run } = setup({ agents: [A], pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  const { store, run } = setup({ agents: [A], pruner, sizesOf: () => SMALL, complete: async () => { await answering.promise; return text('hello'); } });
   const pending = [];
   store.subscribe((e) => { if (e.type === 'colab') pending.push(e.status.prunePending); });
   assert.equal(run.status.prunePending, false);
@@ -1047,7 +1101,7 @@ test('a pass stopped before it starts posts "Pruning cancelled."', async () => {
   // While idle, waiting for an answer in flight.
   const answering = gate();
   const pruner = fakePruner();
-  const idle = setup({ agents: [A], pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  const idle = setup({ agents: [A], pruner, sizesOf: () => SMALL, complete: async () => { await answering.promise; return text('hello'); } });
   idle.run.ensureRoster();
   hostSays(idle.store, 'hi', { owed: [ID_A] });
   idle.run.answer(ID_A);
@@ -1063,7 +1117,7 @@ test('a pass stopped before it starts posts "Pruning cancelled."', async () => {
 
   // While idle, waiting for the agent's lock: the pruner says it never started.
   const waiting = fakePruner({ run: ({ signal }) => new Promise((resolve) => signal.addEventListener('abort', () => resolve({ ok: false, started: false, before: 1, after: 1 }))) });
-  const locked = setup({ pruner: waiting, sizeOf: () => 0, complete: () => text('x') });
+  const locked = setup({ pruner: waiting, sizesOf: () => SMALL, complete: () => text('x') });
   locked.run.prune({});
   await sleep(5);
   locked.run.stop();
@@ -1071,22 +1125,11 @@ test('a pass stopped before it starts posts "Pruning cancelled."', async () => {
   assert.equal(cancelled(locked.store).length, 1);
 
   // Asked for in a run that is stopped before its round ends.
-  const inRun = setup({ pruner, sizeOf: () => 0, complete: () => { inRun.run.prune({}); inRun.run.stop(); return text('done'); } });
+  const inRun = setup({ pruner, sizesOf: () => SMALL, complete: () => { inRun.run.prune({}); inRun.run.stop(); return text('done'); } });
   kickoff(inRun.store, inRun.run);
   await inRun.run.settled();
   assert.equal(cancelled(inRun.store).length, 1);
   assert.equal(inRun.run.status.prunePending, false);
-});
-
-test('a board that shrank below the threshold prunes again once it is over it, without waiting to regrow', async () => {
-  const order = [];
-  // Over, pruned to 50,000; below (pruned by hand); then over again but under 50,000 + regrow.
-  const sizes = [50_000, 50_000, 30_000, 46_000, 46_000];
-  const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
-  const { store, run } = setup({ agents: [A], rounds: 3, pruner, sizeOf: () => sizes.shift() ?? 0, complete: () => { order.push('turn'); return text('done'); } });
-  kickoff(store, run);
-  await run.finished;
-  assert.deepEqual(order, ['turn', 'prune', 'turn', 'turn', 'prune']);
 });
 
 // Claude through the binary, auditing with `audit` (default: "All good." at once).
@@ -1099,7 +1142,7 @@ const ID_F = agentId(F.model, F.roleId);
 
 test("a run that reaches its last round ends with the Foreman's audit", async () => {
   const claude = auditingClaude();
-  const { store, run } = setup({ agents: [A], rounds: 1, claude, auditAtEnd: true, pruner: fakePruner(), sizeOf: () => 0, complete: () => text('done') });
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, auditAtEnd: true, pruner: fakePruner(), sizesOf: () => SMALL, complete: () => text('done') });
   kickoff(store, run);
   await run.finished;
   const texts = chatPosts(store).map((m) => [m.role, m.text]);
@@ -1179,7 +1222,7 @@ test('/audit waits for a pending prune', async () => {
   const answering = gate();
   const pruner = fakePruner({ run: async () => { order.push('prune'); return { ok: true, before: 1, after: 1 }; } });
   const claude = auditingClaude(async () => { order.push('audit'); return { ok: true, text: 'fine' }; });
-  const { store, run } = setup({ agents: [A], claude, pruner, sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  const { store, run } = setup({ agents: [A], claude, pruner, sizesOf: () => SMALL, complete: async () => { await answering.promise; return text('hello'); } });
   run.ensureRoster();
   hostSays(store, 'hi', { owed: [ID_A] });
   run.answer(ID_A);
@@ -1234,7 +1277,7 @@ test('Stop cuts a card auditor short', async () => {
 test('an /audit stopped while waiting for a prune says "Audit cancelled."', async () => {
   const answering = gate();
   const claude = auditingClaude();
-  const { store, run } = setup({ agents: [A], claude, pruner: fakePruner(), sizeOf: () => 0, complete: async () => { await answering.promise; return text('hello'); } });
+  const { store, run } = setup({ agents: [A], claude, pruner: fakePruner(), sizesOf: () => SMALL, complete: async () => { await answering.promise; return text('hello'); } });
   run.ensureRoster();
   hostSays(store, 'hi', { owed: [ID_A] });
   run.answer(ID_A);
