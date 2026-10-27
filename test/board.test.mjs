@@ -297,3 +297,16 @@ test('auditAtEnd defaults to true, survives migration and is validated', () => {
   assert.equal(migrateBoard({ colab: { lineup: { agents: [], auditAtEnd: 'yes' } } }).colab.lineup.auditAtEnd, true);
   for (const bad of ['yes', 1, null]) assert.throws(() => applyOp(board, lineupOp({ auditAtEnd: bad }), 'user'), /auditAtEnd must be true or false/);
 });
+
+test('a host message can say it is a step of a foreman request', () => {
+  const board = emptyBoard();
+  const { message } = applyOp(board, { type: 'chat', text: 'rework saves', to: ['claude'], owed: ['claude'], request: { by: 'claude', step: 1, of: 2 } }, 'user');
+  assert.deepEqual(message.request, { by: 'claude', step: 1, of: 2 });
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'x', request: { by: 'nobody', step: 1, of: 1 } }, 'user'), /unknown connection nobody/);
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'x', request: { by: 'claude', step: 3, of: 2 } }, 'user'), /request/);
+  assert.throws(() => applyOp(board, { type: 'chat', text: 'x', request: { by: 'claude', step: 1, of: 11 } }, 'user'), /request/);
+  // An AI's message never carries it.
+  assert.equal(applyOp(board, { type: 'chat', text: 'y', request: { by: 'claude', step: 1, of: 1 } }, 'claude').message.request, undefined);
+  assert.equal(emptyBoard().colab.request, null);
+  assert.equal(migrateBoard({ chat: [] }).colab.request, null);
+});

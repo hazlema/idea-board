@@ -220,3 +220,19 @@ test('setLastPruneAt saves without history', () => {
   assert.equal(store.historyLog.entries().length, before);
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).colab.lastPruneAt, '2026-10-25T10:00:00.000Z');
 });
+
+test('setColabRequest saves the request and tells the page, with no history', () => {
+  const file = path.join(tmpDir(), 'board.json');
+  const store = new BoardStore(file);
+  const events = [];
+  store.subscribe((e) => events.push(e));
+  store.setColabRequest({ id: 'r_1', by: 'claude', at: 'now', state: 'waiting', step: 0, steps: [] });
+  assert.equal(store.board.colab.request.id, 'r_1');
+  assert.equal(events.at(-1).type, 'board');
+  assert.equal(events.at(-1).op, 'setColabRequest');
+  assert.equal(store.history({ limit: 5 }).entries.length, 0);
+  store.historyLog.flush();
+  assert.equal(new BoardStore(file).board.colab.request.id, 'r_1');
+  store.setColabRequest(null);
+  assert.equal(store.board.colab.request, null);
+});
