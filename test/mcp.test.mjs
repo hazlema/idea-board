@@ -13,7 +13,7 @@ import { PictureMaker } from '../lib/colab/pictures.mjs';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 const V2_TOOLS = [
-  'view_board', 'view_picture', 'get_node', 'get_history', 'list_versions',
+  'view_brief', 'view_brainstorm', 'view_flow', 'view_chat', 'view_board', 'view_picture', 'get_node', 'get_history', 'list_versions',
   'add_brief_section', 'update_brief_section', 'move_brief_section', 'delete_brief_section',
   'add_group', 'update_group', 'add_entry', 'update_entry', 'move_entry', 'delete_entry',
   'add_note', 'update_note', 'add_topic', 'update_topic', 'add_picture_from_url', 'update_picture',
@@ -27,7 +27,7 @@ const V2_TOOLS = [
 test('initialize reports v2 and tools/list covers the full v2 tool set', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
   assert.equal(init.result.serverInfo.version, '0.2.0');
-  assert.equal(init.result.instructions, 'A shared idea board you and the user both edit: Brief (what you are building), Brainstorm (groups, notes, pictures, topics, links) and Flowchart (cards and arrows). Call view_board first and read ruled_out: never re-propose anything on it; if a tool result flags a resemblance, tell the user. Record rejections the user states with rule_out. You may change anything; every change is visible and undoable. Use batch to make several changes in one call. Use wait_for_chat to listen to the board chat; it also reports what the user changed on the board since you last looked.');
+  assert.equal(init.result.instructions, 'A shared idea board you and the user both edit: Brief (what you are building), Brainstorm (groups, notes, pictures, topics, links) and Flowchart (cards and arrows). Call view_brief first and read ruled_out: never re-propose anything on it; read the rest with view_brainstorm, view_flow and view_chat as you need it; if a tool result flags a resemblance, tell the user. Record rejections the user states with rule_out. You may change anything; every change is visible and undoable. Use batch to make several changes in one call. Use wait_for_chat to listen to the board chat; it also reports what the user changed on the board since you last looked.');
   const { tools } = (await rpc('tools/list', {})).result;
   const names = tools.map((t) => t.name);
   for (const name of V2_TOOLS) assert.ok(names.includes(name), name);
@@ -43,7 +43,7 @@ test('view_board shows memory first and brainstorm content', () => withServer(as
   await userOp({ type: 'addObject', kind: 'note', text: 'a note', x: 900, y: 0 });
   await userOp({ type: 'addObject', kind: 'topic', text: 'Magic system', x: 900, y: 300 });
   const view = await call('view_board', {});
-  assert.deepEqual(Object.keys(view), ['title', 'brief', 'ruled_out', 'brainstorm', 'flowchart', 'unanswered_chat']);
+  assert.deepEqual(Object.keys(view), ['notice', 'title', 'brief', 'ruled_out', 'brainstorm', 'flowchart', 'unanswered_chat']);
   assert.deepEqual(Object.keys(view.brief[0]), ['id', 'title', 'text']);
   assert.deepEqual(Object.keys(view.ruled_out[0]), ['id', 'text', 'reason', 'from', 'at']);
   assert.equal(view.ruled_out[0].reason, 'too flashy');
@@ -63,7 +63,7 @@ test('view_board shows memory first and brainstorm content', () => withServer(as
   assert.deepEqual([view.brainstorm.topics[0].x, view.brainstorm.topics[0].y], [900, 300]);
   assert.deepEqual(view.flowchart, { nodes: [], connections: [] });
   const tool = (await rpc('tools/list', {})).result.tools.find((t) => t.name === 'view_board');
-  assert.ok(tool.description.includes('get_history'));
+  assert.ok(tool.description.includes('view_brief'));
 }));
 
 test('adding something close to a ruled-out idea warns Claude', () => withServer(async ({ call, userOp }) => {

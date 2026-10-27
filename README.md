@@ -297,7 +297,7 @@ Then in any Claude Code session in that project, Claude has these tools:
 
 | Area | Tools |
 |---|---|
-| Read | `view_board` (start here; lists ruled-out items first), `view_picture`, `get_node`, `get_history`, `list_versions` |
+| Read | `view_brief` (start here; lists ruled-out items first), `view_brainstorm`, `view_flow`, `view_chat` (pages back through the chat; can pick one author), `view_picture`, `get_node`, `get_history`, `list_versions`; `view_board` (deprecated: the whole board in one go) |
 | Brief | `add_brief_section`, `update_brief_section`, `move_brief_section`, `delete_brief_section` |
 | Brainstorm | `add_group`, `update_group`, `add_entry`, `update_entry`, `move_entry`, `delete_entry`, `add_note`, `update_note`, `add_topic`, `update_topic`, `add_picture_from_url`, `update_picture`, `move_object` (move or resize), `delete_object`, `link`, `update_link`, `unlink` |
 | Flowchart | `add_node`, `update_node`, `delete_node`, `connect`, `update_connection`, `disconnect`, `tidy_layout` |

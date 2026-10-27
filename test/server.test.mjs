@@ -96,8 +96,8 @@ test('Claude sees the brief first and can add to it', () => withServer(async ({ 
   const [section] = store.board.brief.sections;
   await userOp({ type: 'updateSection', id: section.id, text: 'A deck-building warlock game' });
   const added = await call('add_brief_section', { title: 'Decided', text: 'No permadeath' });
-  const view = await call('view_board', {});
-  assert.deepEqual(Object.keys(view).slice(0, 2), ['title', 'brief']);
+  const view = await call('view_brief', {});
+  assert.deepEqual(Object.keys(view), ['title', 'ruled_out', 'brief']);
   assert.equal(view.brief[0].text, 'A deck-building warlock game');
   assert.equal(view.brief[1].id, added.id);
   assert.equal(view.brief[1].text, 'No permadeath');
