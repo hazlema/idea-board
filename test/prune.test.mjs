@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyOp, emptyBoard, OpError } from '../lib/board.mjs';
-import { boardView } from '../lib/mcp-tools.mjs';
+import { boardView, briefView, brainstormView, flowView } from '../lib/mcp-tools.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
-import { PRUNE_SYSTEM_PROMPT, PRUNE_THRESHOLD, PRUNE_REGROW, boardSize, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
+import { PRUNE_SYSTEM_PROMPT, PRUNE_THRESHOLD, PRUNE_REGROW, SECTION_LIMIT, SECTIONS, boardSize, sectionSizes, sectionsOver, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
 
 const A = `${'a'.repeat(32)}.png`;
 
@@ -136,6 +136,98 @@ function prunerStore() {
   return { store, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 const lastChat = (store) => store.board.chat.at(-1);
+// Makes the brainstorm about 85,000 characters, over its limit; returns the big group.
+const growBrainstorm = (store) => store.apply({ type: 'addObject', kind: 'group', title: 'Big', x: 900, y: 0, entries: Array.from({ length: 5 }, (_, i) => ({ label: `Long ${i}`, text: 'w'.repeat(17_000) })) }, 'user').object;
+// An agent whose pass starts, runs `during` and reports `text`; it keeps the prompt it was given.
+const passAgent = ({ text = 'Kept: A.', during = () => {} } = {}) => {
+  const agent = {
+    found: true,
+    prompt: null,
+    async prune(prompt, { onStart }) {
+      onStart('tok');
+      agent.prompt = prompt();
+      during();
+      return { ok: true, text };
+    },
+  };
+  return agent;
+};
+const STILL_OVER = /The Brainstorm is still over its limit \([\d,]+ of 80,000 characters\)\. Raise Aggressiveness under ⋯ → Settings → Pruning and run \/prune again\./;
+
+test('sectionSizes measures each part as its reading tool shows it, the Brief without ruled_out', () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    store.apply({ type: 'ruleOut', target: { kind: 'idea' }, text: 'x'.repeat(500), reason: 'no' }, 'user');
+    const b = store.board;
+    assert.deepEqual(sectionSizes(store), {
+      brief: JSON.stringify(briefView(b)).length,
+      brainstorm: JSON.stringify(brainstormView(b)).length,
+      flow: JSON.stringify(flowView(b, false)).length,
+    });
+    assert.ok(sectionSizes(store).brief < 500);
+    assert.ok(SECTION_LIMIT === 80_000 && PRUNE_REGROW === 10_000);
+    assert.deepEqual(SECTIONS, ['brief', 'brainstorm', 'flow']);
+    assert.deepEqual(sectionsOver({ brief: 80_000, brainstorm: 80_001, flow: 90_000 }), ['brainstorm', 'flow']);
+  } finally { cleanup(); }
+});
+
+test('the prompt names the sections over the limit and keeps the others to clean-up', () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const whole = prunePrompt(store, '', SECTIONS);
+    assert.match(whole, /No section is over the limit; the host asked for this pass\. Prune the whole board\./);
+    assert.doesNotMatch(whole, /Over the limit:/);
+    growBrainstorm(store);
+    const p = prunePrompt(store, '', ['brainstorm']);
+    assert.match(p, /Section sizes \(limit 80,000 characters each\): Brief [\d,]+ · Brainstorm [\d,]+ · Flowchart [\d,]+/);
+    assert.match(p, /Over the limit: the Brainstorm\. Work on it\./);
+    assert.match(p, /In the other sections, change only what belongs to the ideas you cut: remove their pieces\./);
+    assert.ok(p.includes(JSON.stringify(boardView(store, { fullNotes: true }))));
+    assert.match(p, /Mechanics limit:/);
+    const two = prunePrompt(store, '', ['brief', 'brainstorm']);
+    assert.match(two, /Over the limit: the Brief and the Brainstorm\. Work on them\./);
+  } finally { cleanup(); }
+});
+
+test('a section pass posts one size line per section it worked on, and warns when one is still over', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    growBrainstorm(store);
+    const result = await new Pruner({ store, agent: passAgent() }).run({ sections: ['brainstorm'] });
+    assert.deepEqual(result.sections, ['brainstorm']);
+    assert.deepEqual(Object.keys(result.before), SECTIONS);
+    assert.deepEqual(result.after, sectionSizes(store));
+    const m = lastChat(store).text;
+    assert.match(m, /^Kept: A\./);
+    assert.match(m, /Brainstorm: [\d,]+ → [\d,]+ characters\./);
+    assert.doesNotMatch(m, /Brief:|Flowchart:|Board size/);
+    assert.match(m, STILL_OVER);
+  } finally { cleanup(); }
+});
+
+test('a pass that brings its section under the limit does not warn', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const big = growBrainstorm(store);
+    const agent = passAgent({ during: () => store.apply({ type: 'deleteObject', id: big.id }, 'claude', { prune: 'tok' }) });
+    await new Pruner({ store, agent }).run({ sections: ['brainstorm'] });
+    assert.doesNotMatch(lastChat(store).text, /still over its limit/);
+  } finally { cleanup(); }
+});
+
+test('a host pass picks its sections when it starts: those over, else the whole board', async () => {
+  const { store, cleanup } = prunerStore();
+  try {
+    const small = passAgent();
+    assert.deepEqual((await new Pruner({ store, agent: small }).run({})).sections, SECTIONS);
+    assert.match(small.prompt, /Prune the whole board\./);
+    assert.equal(lastChat(store).text.match(/ characters\./g).length, 3);
+    growBrainstorm(store);
+    const big = passAgent();
+    assert.deepEqual((await new Pruner({ store, agent: big }).run({})).sections, ['brainstorm']);
+    assert.match(big.prompt, /Over the limit: the Brainstorm\./);
+  } finally { cleanup(); }
+});
 
 test('a pass saves a version first, guards the law, and posts a summary with the sizes', async () => {
   const { store, cleanup } = prunerStore();
@@ -170,7 +262,8 @@ test('a pass saves a version first, guards the law, and posts a summary with the
     const m = lastChat(store);
     assert.equal(m.role, 'claude');
     assert.match(m.text, /^Merged things\./);
-    assert.match(m.text, /Board size: [\d,]+ → [\d,]+ characters\./);
+    for (const name of ['Brief', 'Brainstorm', 'Flowchart']) assert.match(m.text, new RegExp(`${name}: [\\d,]+ → [\\d,]+ characters\\.`));
+    assert.doesNotMatch(m.text, /Board size/);
   } finally { cleanup(); }
 });
 
@@ -264,8 +357,8 @@ test('a pass stopped before it got the lock saves nothing and posts nothing', as
     const result = await new Pruner({ store, agent: { found: true, prune: async () => ({ ok: false, error: 'stopped' }) } }).run({});
     assert.equal(result.ok, false);
     assert.equal(result.started, false);
-    assert.equal(typeof result.before, 'number');
-    assert.equal(typeof result.after, 'number');
+    assert.deepEqual(result.sections, []);
+    assert.deepEqual(result.after, sectionSizes(store));
     assert.equal(store.versions.list().length, 0);
     assert.equal(store.board.chat.length, chat);
     assert.equal(store.pruning, false);
