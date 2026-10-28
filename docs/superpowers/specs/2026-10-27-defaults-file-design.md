@@ -5,13 +5,23 @@
 Every text an agent is given — the shared rules, the roles, Claude's chat prompt, the turn and
 answer rules, the audit and prune instructions — is hard-coded in JavaScript. The host wants to
 tune them (the agents have been arguing over pixels instead of keeping a 30,000-foot overview of
-the game) and wants them where a person can read and change them, shipped with the app. Their
-motto: KISS, and everything that's related goes together.
+the game) and wants the starting texts in a file shipped with the app, not in code. Their motto:
+KISS, and everything that's related goes together.
+
+## The host's design (as they put it)
+
+> File default.json has the system prompts.
+> - When you first run the app it has nothing for system prompts.
+> - It sees that there is nothing, then populates the values from default.
+> - When the user hits reset in the UI (when editing a role) it resets the prompt to what's in
+>   default.json.
+
+That's the whole model: `defaults.json` is the starting point and the source for Reset. The app
+only ever reads the user's own settings (`~/.config/idea-board/colab.json`).
 
 ## What we're building
 
-1. **One `defaults.json` at the repo root**, next to `server.mjs`, shipped with the app. It holds
-   every behaviour text, in the shape the host asked for:
+1. **`defaults.json` at the repo root**, next to `server.mjs`, shipped with the app:
 
    ```json
    {
@@ -30,77 +40,72 @@ motto: KISS, and everything that's related goes together.
    }
    ```
 
-   Plain strings, one per key; role name → job. No markers or templating: the code adds the
-   facts around them (see "Behaviour vs mechanics").
+   Plain strings; role name → job. Read once at startup. If it's missing, isn't valid JSON, lacks
+   a key, has an unknown key, a blank text or no roles, the server won't start and says which file
+   and what's wrong. Limits as the library's: names ≤ 80, texts ≤ 20,000, 1–20 roles.
 
 2. **No behaviour text left in the code.** `DEFAULT_LIBRARY`, `TURN_RULES`, `ANSWER_RULES`,
-   `SYSTEM_PROMPT` (agent.mjs), `DEFAULT_AUDIT_TEXT`, `PRUNE_SYSTEM_PROMPT`, the Brainstorm/Brief
-   description in the card system prompt, and the behaviour parts of `BINARY_TURN_END`,
-   `TURN_NEXT` (mcp-tools.mjs) and `INSTRUCTIONS` (mcp.mjs) all come from the file instead.
+   `SYSTEM_PROMPT` (agent.mjs), `DEFAULT_AUDIT_TEXT`, `PRUNE_SYSTEM_PROMPT`, the Brief/Brainstorm/
+   Flowchart sentence in the card system prompt, and the behaviour parts of `BINARY_TURN_END`,
+   `TURN_NEXT` (mcp-tools.mjs) and `INSTRUCTIONS` (mcp.mjs) come from the user's settings instead.
 
-3. **First run copies it.** When `~/.config/idea-board/colab.json` doesn't exist, it's built from
-   `defaults.json`: `shared` → `rules`, each role → `{id, name, job}` with the id made from the
-   **first word** of the name (lower case, a-z0-9 only; a clash gets `-2`, `-3`…). That gives
-   `creative`, `qa`, `foreman`, `systems` — today's ids — so a board whose line-up names them
-   still works when `colab.json` is rebuilt (new machine, file deleted), and `foreman`, which the
-   code relies on, stays `foreman`. *(Our call.)* The user's `colab.json` keeps its current shape
-   (`rules`, `roles` array, `passes`), so existing files and boards keep working.
+3. **The user's settings hold every prompt.** `colab.json` becomes
+   `{ rules, roles: [{id, name, job, pictures?}], prompts: { chat, turn, answer, audit, prune } }`.
+   Whenever it's read, anything missing is filled from `defaults.json` and written back:
+   - no file → everything (`shared` → `rules`, the roles, all five prompts);
+   - no `rules` → `shared`; no roles → the default roles;
+   - a prompt missing or blank → its default (agents always need one).
+   An old file's `passes.audit` / `passes.prune` move into `prompts` (a non-blank one wins over
+   the default), and `passes` goes away. So the host's current file keeps its shared rules, roles
+   and audit text and gains chat, turn, answer and prune.
 
-4. **Chat, turn and answer are edited in the file, not the app.** They are never copied into
-   `colab.json`; the code reads them from `defaults.json` each time it builds a prompt (re-reading
-   the file when it has changed), so the host edits the file and the next agent turn uses it, no
-   restart. KISS: the host asked for a file to change, not more panes. Audit and prune keep their
-   existing app panes and overrides; only their defaults (and Reset to default) now come from the
-   file.
+   A role's id comes from the **first word** of its name (lower case, a-z0-9; a clash gets `-2`,
+   `-3`…; no word → `role`): `creative`, `qa`, `foreman`, `systems` — today's ids, so boards that
+   name them keep working, and `foreman`, which the code relies on, stays `foreman`. *(Our call.)*
 
-5. **Startup fails loudly** if `defaults.json` is missing, isn't valid JSON, lacks a key, has an
-   empty text, or has no roles — naming the file and what's wrong. The same limits as the
-   library's validation apply (role names ≤ 80 chars, texts ≤ 20,000, 1–20 roles, unique ids).
-   If an edit made while running breaks the file, the server keeps using the last good copy and
-   says so in its log (and on the page if that is simple); fixing the file takes effect again.
+4. **Everything is edited in the app** (Connections → Edit roles…). The list gets a **Prompts**
+   section — Chat (Claude), Turn, Answer, Final audit, Prune — each a text box like Final audit's
+   today. Edits are saved to `colab.json` and used on the next agent turn.
+
+5. **Reset to default** puts back the `defaults.json` text: on each prompt, on Shared rules, and on
+   a role whose id is one of the default roles (its job; the name stays). A role that isn't in
+   `defaults.json` (the host's Art Director) has no Reset. The button is disabled while the text
+   already equals the default.
 
 6. **Reworded defaults.** `shared` is the host's new text (below), verbatim. The builder rewords
-   `turn`, `answer`, `chat` and the four role jobs so they agree with it (see "The new texts").
-   `audit` and `prune` move over unchanged.
+   `turn`, `answer`, `chat` and the four role jobs so they agree with it. `audit` and `prune` move
+   over unchanged.
 
 ## Behaviour vs mechanics
 
-The file says **how an agent should behave**. The code keeps only **how the machine works**:
-facts that are true because the code makes them true, and that would break things if a host
-deleted them. Those stay in code, short, and are added around the file's text:
+The prompts say **how an agent should behave**. The code keeps only **how the machine works**:
+facts true because the code makes them true, which would break things if a host deleted them:
 
-- who the agent is, its role's job, who the others are, whether it's taking a turn or answering
-  (the "You are X, one of N agents… The others are …" line);
-- "your final reply is posted to the chat under your name; there is no chat tool" and, for an
-  MCP session, "call reply, then wait_for_chat again";
+- the identity line ("You are X, one of N agents… The others are …"), "Your role: …";
+- "your final reply is posted to the chat under your name; there is no chat tool"; for the
+  binary, "do not call reply yourself" and that it can read (not change) project files; for an
+  MCP session, "call reply, then wait_for_chat again", batch, and that changes are undoable;
 - the audit's "you can only read; your reply is posted as the report";
 - the labels that frame data: "The chat so far:", "Since your last turn:", "Changes on the
   board:", "It is your turn, X.", "Answer the host, X.", the out-of-time / out-of-moves wrap-up
-  asks, the prune pass's settings and section sizes block.
+  asks, the prune pass's settings and section sizes.
 
-If a line is both (e.g. "3 to 5 sentences" inside `BINARY_TURN_END`), the behaviour half goes to
-the file and the mechanics half stays.
+## Who gets what
 
-## Everyone gets the same turn rules
-
-Today a card agent gets `TURN_RULES`, but Claude in a run gets its chat prompt plus a separate
-`BINARY_TURN_END` (binary) or `TURN_NEXT` (MCP session), each saying "3 to 5 sentences" in its
-own words. After this change every agent taking a run turn gets the `turn` text. Exactly what
-each one gets *(our call)*:
+Every agent taking a run turn gets the `turn` text; Claude's old "3 to 5 sentences" lines go.
 
 | Who, doing what | System prompt | Added to the turn's message |
 |---|---|---|
-| Card, run turn | identity line + job + `shared` + `turn` | — |
-| Card, answering the host | identity line + job + `shared` + `answer` | — |
-| Claude binary, chat with the host | `chat` + role + `shared` (as now) | — |
-| Claude binary, run turn | the same (one resumed session) | `turn`, replacing `BINARY_TURN_END`'s behaviour |
-| Claude MCP session, connecting | `INSTRUCTIONS` = mechanics + `chat` | — |
-| Claude MCP session, run turn | — | `turn`, in the `next` text of the `wait_for_chat` result (replacing `TURN_NEXT`'s behaviour) |
+| Card, run turn | identity + job + shared rules + `turn` + reply mechanics | — |
+| Card, answering the host | identity + job + shared rules + `answer` + reply mechanics | — |
+| Claude binary, chat with the host | `chat` + binary mechanics + role + shared rules | — |
+| Claude binary, run turn | the same (one resumed session) | `turn` + "your reply is posted as your message to the others" |
+| Claude MCP session, connecting | MCP mechanics + `chat` | — |
+| Claude MCP session, run turn | — | `next` = "It is your turn…" + `turn` + "call reply, then wait_for_chat" |
 
-So `chat` is Claude's "talking with the host" prompt; it must not contradict `turn`, and should
-say that in a run turn the turn rules in the message apply. `answer` is for cards only (Claude's
-chat already is its answer). An edit to `turn` reaches every agent on its next turn; an edit to
-`chat` reaches an attached MCP session when it reconnects *(our call; acceptable)*.
+`chat` is Claude's "talking with the host" prompt; it must not contradict `turn` and should say
+that in a run turn the turn rules in the message apply. `answer` is for cards (Claude's chat is
+its answer). An edit to `chat` reaches an attached MCP session when it reconnects *(our call)*.
 
 ## The new texts
 
@@ -160,42 +165,33 @@ Everything you write must be clear and readable by a human.
 ### What the reworded texts must do
 
 - **turn**: agree with `shared` — 3 sentences max in chat, `PASS` is a good turn, no praise,
-  substance on the board. Drop the old "about 3 to 6 changes" and "3 to 5 sentences". Keep the
-  useful how-to: the board is in your messages (whole on the first turn, changes after), read
-  ruled_out, use rule_out with a reason rather than deleting others' work, view_* tools to check
-  a part mid-turn.
-- **answer**: answer in your role, briefly (≤ 3 sentences), others answer at the same time so
-  give your own view, you may change the board and say what you changed.
-- **chat** (Claude, outside a run): today's `SYSTEM_PROMPT`, trimmed of anything `shared` now
-  says (the board's purpose and what belongs on it), keeping the tool how-to (view_brief first,
-  ruled_out, rule_out on rejections, Pointing at, file reading, "Claude added").
-- **roles**: the four jobs, reworded to the overview level (scenes and what the player does,
-  not pixels). The Foreman keeps: coherence, merging, settling contradictions, keeping the
-  Brief to current decisions, the last turn of each round with its 1–10 score and next focus,
-  and `ask_agents` outside a run. The Foreman also now owns what `shared` gives it: approving
-  decisions and applying out-of-role changes others propose.
+  substance on the board. Drop "about 3 to 6 changes" and "3 to 5 sentences". Keep the how-to:
+  the board is in your messages (whole on the first turn, changes after), read ruled_out, use
+  rule_out with a reason rather than deleting others' work, view_* tools to check a part mid-turn.
+- **answer**: answer in your role, briefly (≤ 3 sentences); others answer at the same time, so
+  give your own view; you may change the board, and say what you changed.
+- **chat** (Claude with the host): today's `SYSTEM_PROMPT`, trimmed of what `shared` now says,
+  keeping the tool how-to (view_brief first, ruled_out, rule_out on rejections, Pointing at,
+  "Claude added").
+- **roles**: the four jobs at overview level (scenes and what the player does, not pixels). The
+  Foreman keeps coherence, merging, settling contradictions, keeping the Brief to current
+  decisions, the last turn of each round with its 1–10 score and next focus, and `ask_agents`
+  outside a run; and gains what `shared` gives it: approving decisions and applying out-of-role
+  changes others propose.
 
-The host will review these in the file and keep tuning them; they don't need to be perfect.
+The host will keep tuning these in the app; they don't need to be perfect.
 
 ## Non-goals
 
 - The board tools' own descriptions (`DEFINITIONS` in `lib/mcp-tools.mjs`) stay in code.
-- No save-back button from the app to `defaults.json`, and no app panes for chat, turn or
-  answer; the host edits the file.
-- Shared rules and roles in an existing `colab.json` don't follow `defaults.json` and get no
-  Reset button (audit and prune keep theirs). The host pastes the new `shared` into their own
-  copy through the app.
-- The card prompt's Brief/Brainstorm/Flowchart description is dropped from code, not moved to a
-  new key: `shared` now describes the board *(our call)*. An existing `colab.json` keeps its old
-  rules, so its agents lose that description until the host pastes the new `shared` into Shared
-  rules — the host is doing that anyway.
-- `PASS` replies are posted to the chat as they are; no special handling.
-- No new default roles (the host's own Art Director stays in their own `colab.json`).
+- No save-back from the app to `defaults.json`; the host copies text over by hand.
+- `defaults.json` is read at startup only; editing it means a restart.
+- `PASS` replies are posted as they are; no new default roles.
 
 ## Left to the builder
 
-- Where the loading code lives and how it's passed around (a small `lib/defaults.mjs` that reads
-  and validates the file once at startup is the obvious shape); tests can load a fixture.
-- How `passDefaults` reaches the page (today `/api/colab` sends `passDefaults`; extend it).
+- How the prompts reach the agent and the MCP session (the Room already hands a `role()` getter to
+  both; a `prompts()` getter alongside is the obvious shape).
+- Pane layout and wording, following `RoleEditor` / `PassPane` / `RolePane`.
 - Exact wording of the reworded texts, within the rules above.
-- Updating the README where it describes roles, passes and `colab.json`.
+- README updates where it describes roles, passes and `colab.json`.
