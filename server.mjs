@@ -14,7 +14,7 @@ import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
 import { PictureMaker } from './lib/colab/pictures.mjs';
 import { Agent } from './lib/agent.mjs';
-import { Library, libraryFile, PASS_DEFAULTS } from './lib/colab/library.mjs';
+import { Library, libraryFile } from './lib/colab/library.mjs';
 import { defaults } from './lib/defaults.mjs';
 import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
 import { ColabRun } from './lib/colab/run.mjs';
@@ -99,7 +99,7 @@ async function colabRoute(run, room, pathname, req, res) {
     throw error;
   };
   if (pathname === '/api/colab' && req.method === 'GET') {
-    sendJson(res, 200, { status: run.status, hasKey: openrouter.hasKey(), library: library.get(), passDefaults: PASS_DEFAULTS, connections: room.connections() });
+    sendJson(res, 200, { status: run.status, hasKey: openrouter.hasKey(), library: library.get(), defaults: defaults(), connections: room.connections() });
   } else if (pathname === '/api/colab/models' && req.method === 'GET') {
     try { sendJson(res, 200, { models: await openrouter.models() }); }
     catch (error) { sendJson(res, 502, { error: error.message }); }
@@ -109,7 +109,7 @@ async function colabRoute(run, room, pathname, req, res) {
   } else if (pathname === '/api/colab/library' && req.method === 'PUT') {
     const body = (await readBody(req)) ?? {};
     try {
-      const saved = library.save({ rules: body.rules, roles: body.roles, passes: body.passes });
+      const saved = library.save({ rules: body.rules, roles: body.roles, prompts: body.prompts });
       // Role names and which cards can answer follow the library (after the run, like line-up edits).
       if (run.status.state === 'idle') room.lineupChanged();
       sendJson(res, 200, { library: saved });

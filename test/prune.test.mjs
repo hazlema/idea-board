@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
-import { PRUNE_SYSTEM_PROMPT, PRUNE_REGROW, SECTION_LIMIT, SECTIONS, sectionSizes, sectionsOver, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
+import { PRUNE_REGROW, SECTION_LIMIT, SECTIONS, sectionSizes, sectionsOver, pruneGuard, keepCredit, Pruner, prunePrompt } from '../lib/prune.mjs';
+import { defaults } from '../lib/defaults.mjs';
 
 const A = `${'a'.repeat(32)}.png`;
 
@@ -384,9 +385,10 @@ test('the version is saved and the guard begins only once the agent starts, with
 });
 
 test('the prompt tells the agent how to cut a mechanic with rule_out', () => {
-  assert.match(PRUNE_SYSTEM_PROMPT, /rule_out with kind "object"/);
-  assert.match(PRUNE_SYSTEM_PROMPT, /rule_out kind "idea"/);
-  assert.match(PRUNE_SYSTEM_PROMPT, /Never use rule_out on single entries or cards/);
+  const { prune } = defaults().prompts;
+  assert.match(prune, /rule_out with kind "object"/);
+  assert.match(prune, /rule_out kind "idea"/);
+  assert.match(prune, /Never use rule_out on single entries or cards/);
 });
 
 test("a pass uses the library's prune text", async () => {
@@ -394,8 +396,8 @@ test("a pass uses the library's prune text", async () => {
   const agent = { found: true, prune: async (p, opts) => { seen.push(opts.systemPrompt); return { ok: true, text: 'ok' }; } };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-prune-'));
   const store = new BoardStore(path.join(dir, 'b.json'));
-  const library = { get: () => ({ rules: '', roles: [], passes: { prune: 'Cut hard.' } }) };
+  const library = { get: () => ({ rules: '', roles: [], prompts: { prune: 'Cut hard.' } }) };
   await new Pruner({ store, agent, library }).run({});
   await new Pruner({ store, agent }).run({});
-  assert.deepEqual(seen, ['Cut hard.', PRUNE_SYSTEM_PROMPT]);
+  assert.deepEqual(seen, ['Cut hard.', defaults().prompts.prune]);
 });

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BoardStore } from '../lib/store.mjs';
-import { Library, DEFAULT_LIBRARY } from '../lib/colab/library.mjs';
+import { Library, defaultLibrary } from '../lib/colab/library.mjs';
 import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker, PICTURES_PER_TURN } from '../lib/colab/pictures.mjs';
@@ -21,7 +21,7 @@ function setup({ image } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   const library = new Library(path.join(dir, 'colab.json'));
-  library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
+  library.save({ ...defaultLibrary(), roles: [...defaultLibrary().roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
   store.addColabRoster([
     { id: A, model: 'acme/alpha', roleId: 'art', name: 'A', color: 'violet' },
     { id: B, model: 'acme/beta', roleId: 'qa', name: 'B', color: 'green' },

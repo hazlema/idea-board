@@ -7,7 +7,7 @@ import { buildPrompt } from '../lib/agent.mjs';
 import { createToolRunner } from '../lib/mcp.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { withServer } from './helpers.mjs';
-import { DEFAULT_LIBRARY } from '../lib/colab/library.mjs';
+import { defaultLibrary } from '../lib/colab/library.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
@@ -503,7 +503,7 @@ test('a reply before the turn is handed over is an ordinary reply', () => withSe
 // A PictureMaker over the server's library with an 'art' role that can make pictures,
 // and a fake image model that returns a 1x1 PNG.
 const withPictures = (store, library) => {
-  library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
+  library.save({ ...defaultLibrary(), roles: [...defaultLibrary().roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
   store.board.colab.lineup.imageModel = 'acme/painter';
   return new PictureMaker({ store, library, openrouter: { image: async () => ({ data: PNG, cost: 0.05 }) } });
 };

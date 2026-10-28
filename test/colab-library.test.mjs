@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { OpError } from '../lib/board.mjs';
 import { emptyBoard } from '../lib/board.mjs';
-import { DEFAULT_LIBRARY, Library, configDir, passText } from '../lib/colab/library.mjs';
-import { DEFAULT_AUDIT_TEXT } from '../lib/audit.mjs';
+import { Library, configDir, defaultLibrary } from '../lib/colab/library.mjs';
+import { defaults } from '../lib/defaults.mjs';
 import { stripSelfTag, systemPrompt, turnMessage } from '../lib/colab/prompts.mjs';
 
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-')), 'sub', 'colab.json');
@@ -32,16 +32,48 @@ test('configDir follows each platform', () => {
 test('a missing library file is created from the defaults', () => {
   const file = tmpFile();
   const lib = new Library(file).get();
-  assert.deepEqual(lib, DEFAULT_LIBRARY);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), DEFAULT_LIBRARY);
+  assert.deepEqual(lib, defaultLibrary());
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), defaultLibrary());
   assert.deepEqual(lib.roles.map((r) => r.id), ['creative', 'qa', 'foreman', 'systems']);
-  assert.match(lib.roles.find((r) => r.id === 'foreman').job, /score from 1 to 10/);
-  assert.ok(lib.rules.startsWith('Every turn must contribute at least one meaningful creative idea.'));
+  assert.equal(lib.rules, defaults().shared);
+  assert.deepEqual(lib.prompts, defaults().prompts);
+});
+
+test('an old library file is filled and keeps what it had', () => {
+  const file = tmpFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const roles = [{ id: 'new-role', name: 'Art Director', job: 'Draw.', pictures: true }];
+  fs.writeFileSync(file, JSON.stringify({ rules: 'Old.', roles, passes: { audit: 'Mine.' } }));
+  const lib = new Library(file).get();
+  const { chat, turn, answer, prune } = defaults().prompts;
+  assert.deepEqual(lib, { rules: 'Old.', roles, prompts: { chat, turn, answer, audit: 'Mine.', prune } });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), lib);
+});
+
+test('a full library file is left byte-for-byte alone', () => {
+  const file = tmpFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const full = { ...defaultLibrary(), prompts: { ...defaults().prompts, turn: 'My turn rules.' } };
+  fs.writeFileSync(file, JSON.stringify(full));
+  const bytes = fs.readFileSync(file, 'utf8');
+  const library = new Library(file);
+  library.get();
+  assert.equal(library.get().prompts.turn, 'My turn rules.');
+  assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+});
+
+test('bad prompt values are replaced', () => {
+  const file = tmpFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ rules: '', roles: [{ id: 'a', name: 'A', job: 'j' }], prompts: { chat: 5, other: 'x' } }));
+  const { prompts } = new Library(file).get();
+  assert.equal(prompts.chat, defaults().prompts.chat);
+  assert.ok(!('other' in prompts));
 });
 
 test('save round-trips and rejects bad input', () => {
   const library = new Library(tmpFile());
-  const next = { rules: 'Be nice.', roles: [{ id: 'a-1', name: 'A', job: 'Do a.' }] };
+  const next = { rules: 'Be nice.', roles: [{ id: 'a-1', name: 'A', job: 'Do a.' }], prompts: { ...defaults().prompts, chat: 'Hi.' } };
   assert.deepEqual(library.save(next), next);
   assert.deepEqual(library.get(), next);
   assert.throws(() => library.save({ rules: '', roles: [] }), OpError);
@@ -85,20 +117,23 @@ test('the turn rules say the final reply is posted for the agent', async () => {
   assert.match(TURN_RULES, /no tool call/);
 });
 
-test('passes are optional, saved only when non-blank, and checked', () => {
+test('a blank prompt is refilled', () => {
   const lib = new Library(tmpFile());
-  const roles = [{ id: 'a', name: 'A', job: 'j' }];
-  assert.deepEqual(lib.save({ rules: '', roles, passes: { audit: 'Check X', prune: '   ' } }).passes, { audit: 'Check X' });
-  assert.throws(() => lib.save({ rules: '', roles, passes: { other: 'x' } }), OpError);
-  assert.throws(() => lib.save({ rules: '', roles, passes: { constructor: 'x' } }), OpError);
-  assert.throws(() => lib.save({ rules: '', roles, passes: { audit: 'x'.repeat(20001) } }), OpError);
-  assert.ok(!('passes' in lib.save({ rules: '', roles })));
-  assert.ok(!('passes' in lib.save({ rules: '', roles, passes: { audit: ' ' } })));
+  const saved = lib.save({ ...defaultLibrary(), prompts: { ...defaults().prompts, turn: '  ' } });
+  assert.equal(saved.prompts.turn, defaults().prompts.turn);
 });
 
-test('passText falls back to the default', () => {
-  assert.equal(passText({ rules: '', roles: [] }, 'audit'), DEFAULT_AUDIT_TEXT);
-  assert.equal(passText({ rules: '', roles: [], passes: { prune: 'Mine' } }, 'prune'), 'Mine');
+test('save keeps prompts and checks them', () => {
+  const lib = new Library(tmpFile());
+  const roles = [{ id: 'a', name: 'A', job: 'j' }];
+  assert.equal(lib.save({ rules: '', roles, prompts: { audit: 'Check X' } }).prompts.audit, 'Check X');
+  assert.equal(lib.get().prompts.audit, 'Check X');
+  assert.equal(lib.save({ rules: '', roles }).prompts.audit, 'Check X');
+  assert.throws(() => lib.save({ rules: '', roles, prompts: { other: 'x' } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, prompts: { constructor: 'x' } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, prompts: { turn: 'x'.repeat(20001) } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, prompts: { turn: 5 } }), OpError);
+  assert.throws(() => lib.save({ rules: '', roles, prompts: 'x' }), OpError);
 });
 
 test("a request step reads as the foreman's request, approved by the host", () => {

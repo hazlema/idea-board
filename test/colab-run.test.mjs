@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Agent } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
-import { DEFAULT_LIBRARY, Library } from '../lib/colab/library.mjs';
+import { defaultLibrary, Library } from '../lib/colab/library.mjs';
 import { OpenRouterError } from '../lib/colab/openrouter.mjs';
 import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
@@ -621,7 +621,7 @@ function pictureSetup(complete, { image = async () => ({ data: PICTURE_PNG, cost
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   const library = new Library(path.join(dir, 'colab.json'));
-  library.save({ ...DEFAULT_LIBRARY, roles: [...DEFAULT_LIBRARY.roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
+  library.save({ ...defaultLibrary(), roles: [...defaultLibrary().roles, { id: 'art', name: 'Concept Art', job: 'Draw.', pictures: true }] });
   Object.assign(store.board.colab.lineup, { agents: agents ?? [ART, B], rounds: 1, budget: 5, imageModel: 'acme/painter' });
   const calls = [];
   const openrouter = {

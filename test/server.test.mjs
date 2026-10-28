@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { browserCommand, parseArgs } from '../server.mjs';
 import { DEFAULT_IMAGE_MODEL } from '../lib/board.mjs';
 import { Library } from '../lib/colab/library.mjs';
-import { AUDIT_TOOLS, DEFAULT_AUDIT_TEXT } from '../lib/audit.mjs';
+import { AUDIT_TOOLS } from '../lib/audit.mjs';
+import { defaults } from '../lib/defaults.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 
 test('MCP initialize and tools/list', () => withServer(async ({ rpc }) => {
@@ -324,7 +325,7 @@ test('the library round-trips and rejects duplicate role ids', async () => {
   const { factory } = colabFor();
   await withServer(async ({ base }) => {
     const put = (body) => fetch(`${base}/api/colab/library`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const lib = { rules: 'r', roles: [{ id: 'a', name: 'A', job: 'j' }] };
+    const lib = { rules: 'r', roles: [{ id: 'a', name: 'A', job: 'j' }], prompts: { ...defaults().prompts, turn: 'T' } };
     assert.equal((await put(lib)).status, 200);
     assert.deepEqual((await (await fetch(`${base}/api/colab`)).json()).library, lib);
     assert.equal((await put({ rules: 'r', roles: [lib.roles[0], lib.roles[0]] })).status, 400);
@@ -467,13 +468,14 @@ test('/stop works on a /prune accepted but not started yet, and the pass says it
   });
 });
 
-test('the library carries pass texts, and /api/colab lists their defaults', async () => {
+test('the library carries prompts, and /api/colab sends the defaults', async () => {
   const { factory } = colabFor();
   await withServer(async ({ base }) => {
     const info = await (await fetch(`${base}/api/colab`)).json();
-    assert.equal(info.passDefaults.audit, DEFAULT_AUDIT_TEXT);
-    const res = await fetch(`${base}/api/colab/library`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: 'r', roles: [{ id: 'a', name: 'A', job: 'j' }], passes: { audit: 'A' } }) });
-    assert.deepEqual((await res.json()).library.passes, { audit: 'A' });
+    assert.deepEqual(info.defaults, defaults());
+    assert.ok(!('passDefaults' in info));
+    const res = await fetch(`${base}/api/colab/library`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules: 'r', roles: [{ id: 'a', name: 'A', job: 'j' }], prompts: { audit: 'A' } }) });
+    assert.equal((await res.json()).library.prompts.audit, 'A');
   }, { colab: factory });
 });
 
