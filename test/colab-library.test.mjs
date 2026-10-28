@@ -7,7 +7,7 @@ import { OpError } from '../lib/board.mjs';
 import { emptyBoard } from '../lib/board.mjs';
 import { Library, configDir, defaultLibrary } from '../lib/colab/library.mjs';
 import { defaults } from '../lib/defaults.mjs';
-import { stripSelfTag, systemPrompt, turnMessage } from '../lib/colab/prompts.mjs';
+import { REPLY_RULE, stripSelfTag, systemPrompt, turnMessage } from '../lib/colab/prompts.mjs';
 
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-lib-')), 'sub', 'colab.json');
 const X = { id: 'agent:x/x=creative', model: 'x/x', roleId: 'creative', name: 'X · Creative', modelName: 'X', color: 'amber' };
@@ -85,8 +85,9 @@ test('save round-trips and rejects bad input', () => {
 });
 
 test('systemPrompt names the agent, the others, the job and the rules', () => {
-  const prompt = systemPrompt({ me: Y, others: [X], job: 'Find the holes.', rules: 'Rule one.' });
-  for (const part of ['Y · QA', 'X · Creative', 'Your role: Find the holes.', 'Rule one.', 'How to play your turn']) assert.ok(prompt.includes(part), part);
+  const prompt = systemPrompt({ me: Y, others: [X], job: 'Find the holes.', rules: 'Rule one.', guide: 'Play well.' });
+  for (const part of ['Y · QA', 'X · Creative', 'Your role: Find the holes.', 'Rule one.', 'Play well.', REPLY_RULE]) assert.ok(prompt.includes(part), part);
+  assert.ok(!prompt.includes('The board has a Brief'));
 });
 
 test('turnMessage shows the host and the agents by name', () => {
@@ -112,9 +113,8 @@ test('stripSelfTag drops only a tag naming this agent', () => {
   assert.equal(stripSelfTag('**X · Creative:** Hi', 'Y · QA'), '**X · Creative:** Hi');
 });
 
-test('the turn rules say the final reply is posted for the agent', async () => {
-  const { TURN_RULES } = await import('../lib/colab/prompts.mjs');
-  assert.match(TURN_RULES, /no tool call/);
+test('the reply rule says the final reply is posted for the agent', () => {
+  assert.match(REPLY_RULE, /no tool call/);
 });
 
 test('a blank prompt is refilled', () => {

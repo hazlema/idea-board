@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Agent, findOnPath } from '../lib/agent.mjs';
+import { Agent, CHAT_MECHANICS, findOnPath } from '../lib/agent.mjs';
+import { defaults } from '../lib/defaults.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { Pruner } from '../lib/prune.mjs';
 import { boardView } from '../lib/mcp-tools.mjs';
@@ -149,6 +150,27 @@ process.stdout.write(JSON.stringify({ result: sys, session_id: 's_1' }));
     const text = store.board.chat.find((m) => m.role === 'claude').text;
     assert.ok(text.includes('Your role on this board:'));
     assert.ok(text.includes('Be the Foreman.'));
+    store.historyLog.flush();
+  } finally {
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test("the system prompt is the library's chat prompt, the mechanics, then the role", async () => {
+  const echo = `#!/usr/bin/env node
+const sys = process.argv[process.argv.indexOf('--append-system-prompt') + 1];
+process.stdout.write(JSON.stringify({ result: sys, session_id: 's_1' }));
+`;
+  const { dir, store, agent, idle } = setup(echo, { role: () => 'Be the Foreman.' });
+  agent.prompts = () => ({ ...defaults().prompts, chat: 'CHAT-X' });
+  try {
+    store.apply({ type: 'chat', text: 'hi', owed: ['claude'] }, 'user');
+    const done = idle();
+    agent.nudge();
+    await done;
+    const text = store.board.chat.find((m) => m.role === 'claude').text;
+    assert.ok(text.startsWith(`CHAT-X\n\n${CHAT_MECHANICS}`));
+    assert.ok(text.endsWith('Your role on this board:\nBe the Foreman.'));
     store.historyLog.flush();
   } finally {
     fs.rmSync(dir, { recursive: true });

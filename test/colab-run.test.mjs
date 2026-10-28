@@ -7,7 +7,7 @@ import { Agent } from '../lib/agent.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { defaultLibrary, Library } from '../lib/colab/library.mjs';
 import { OpenRouterError } from '../lib/colab/openrouter.mjs';
-import { ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
+import { BINARY_TURN_END, ColabRun, activityFor, doneFor } from '../lib/colab/run.mjs';
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 import { PRUNE_REGROW, SECTIONS, Pruner } from '../lib/prune.mjs';
@@ -176,6 +176,35 @@ test('extras are joined to the library text for the turn', async () => {
   const system = calls[0].messages[0].content;
   assert.match(system, /EXTRA RULES/);
   assert.match(system, /EXTRA JOB/);
+});
+
+test("a card's turn and answer use the library's turn and answer prompts", async () => {
+  const { dir, store, run, calls } = setup({ agents: [A], rounds: 1, complete: () => text('x') });
+  const library = new Library(path.join(dir, 'colab.json'));
+  library.save({ ...library.get(), prompts: { ...library.get().prompts, turn: 'TURN-X', answer: 'ANSWER-X' } });
+  kickoff(store, run);
+  await run.finished;
+  assert.match(calls[0].messages[0].content, /TURN-X/);
+  assert.doesNotMatch(calls[0].messages[0].content, /ANSWER-X/);
+  run.ensureRoster();
+  hostSays(store, 'what do you think?', { owed: [ID_A] });
+  run.answer(ID_A);
+  await run.settled();
+  assert.match(calls.at(-1).messages[0].content, /ANSWER-X/);
+  assert.doesNotMatch(calls.at(-1).messages[0].content, /TURN-X/);
+});
+
+test("Claude's binary turn gets the library's turn prompt", async () => {
+  const prompts = [];
+  const claude = { via: () => 'binary', takeTurn: async (prompt) => { prompts.push(prompt); return { ok: true, text: 'claude turn' }; } };
+  const { dir, store, run } = setup({ agents: [A], rounds: 1, claude, complete: () => text('card turn') });
+  const library = new Library(path.join(dir, 'colab.json'));
+  library.save({ ...library.get(), prompts: { ...library.get().prompts, turn: 'TURN-X' } });
+  kickoff(store, run);
+  await run.finished;
+  assert.match(prompts[0], /TURN-X/);
+  assert.ok(prompts[0].endsWith(BINARY_TURN_END));
+  assert.doesNotMatch(prompts[0], /3 to 5 sentences/);
 });
 
 test('the background agent stays quiet during a run', async () => {

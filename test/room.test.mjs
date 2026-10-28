@@ -323,3 +323,11 @@ test('recover drops a foreman request left from before a restart', () => {
 function colabCut(room) {
   room.colab.cutAnswer ??= () => {};
 }
+
+test("the agent and the session read the library's prompts as they are now", () => {
+  const { library, agent, presence } = setup();
+  const lib = library.get();
+  library.save({ ...lib, prompts: { ...lib.prompts, turn: 'TURN-Y' } });
+  assert.equal(agent.prompts().turn, 'TURN-Y');
+  assert.equal(presence.prompts().turn, 'TURN-Y');
+});

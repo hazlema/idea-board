@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildPrompt } from '../lib/agent.mjs';
-import { createToolRunner } from '../lib/mcp.mjs';
+import { MCP_MECHANICS, createMcpHandler, createToolRunner, mcpInstructions } from '../lib/mcp.mjs';
+import { turnNext } from '../lib/mcp-tools.mjs';
+import { defaults } from '../lib/defaults.mjs';
 import { BoardStore } from '../lib/store.mjs';
 import { withServer } from './helpers.mjs';
 import { defaultLibrary } from '../lib/colab/library.mjs';
@@ -27,7 +29,8 @@ const V2_TOOLS = [
 test('initialize reports v2 and tools/list covers the full v2 tool set', () => withServer(async ({ rpc }) => {
   const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
   assert.equal(init.result.serverInfo.version, '0.2.0');
-  assert.equal(init.result.instructions, 'A shared idea board you and the user both edit: Brief (what you are building), Brainstorm (groups, notes, pictures, topics, links) and Flowchart (cards and arrows). Call view_brief first and read ruled_out: never re-propose anything on it; read the rest with view_brainstorm, view_flow and view_chat as you need it; if a tool result flags a resemblance, tell the user. Record rejections the user states with rule_out. You may change anything; every change is visible and undoable. Use batch to make several changes in one call. Use wait_for_chat to listen to the board chat; it also reports what the user changed on the board since you last looked.');
+  assert.equal(init.result.instructions, mcpInstructions(defaults().prompts.chat));
+  assert.ok(init.result.instructions.startsWith(MCP_MECHANICS));
   const { tools } = (await rpc('tools/list', {})).result;
   const names = tools.map((t) => t.name);
   for (const name of V2_TOOLS) assert.ok(names.includes(name), name);
@@ -425,12 +428,27 @@ test('wait_for_chat skips messages not owed by Claude', () => withServer(async (
   assert.deepEqual(waited.messages.map((m) => m.text), ['you']);
 }));
 
+test('an MCP handler without instructions gives only the mechanics', async () => {
+  const handle = createMcpHandler({ call: async () => ({}) });
+  const reply = await handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+  assert.equal(reply.result.instructions, MCP_MECHANICS);
+});
+
+test('the session is told the chat prompt the library holds now', () => withServer(async ({ rpc, room }) => {
+  const lib = room.library.get();
+  room.library.save({ ...lib, prompts: { ...lib.prompts, chat: 'CHAT-X' } });
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+  assert.ok(init.result.instructions.endsWith('CHAT-X'));
+}));
+
 test('a run turn is offered through wait_for_chat and finished by reply', () => withServer(async ({ call, store, presence }) => {
   const offer = presence.offerTurn('Round 1: your turn', { timeoutMs: 2000 });
   const waited = await call('wait_for_chat', { timeout_seconds: 1 });
   assert.deepEqual(waited.messages, []);
   assert.equal(waited.turn.prompt, 'Round 1: your turn');
   assert.match(waited.next, /It is your turn in the agents' run/);
+  assert.equal(waited.next, turnNext(presence.prompts().turn));
+  assert.ok(waited.next.includes(presence.prompts().turn));
   const replied = await call('reply', { text: 'did it' });
   assert.equal(replied.turn, 'done');
   assert.equal(await offer, true);

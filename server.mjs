@@ -11,7 +11,7 @@ import { ConflictError, OpError } from './lib/board.mjs';
 import { AUDIT_TOOLS } from './lib/audit.mjs';
 import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
-import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
+import { createMcpHandler, createToolRunner, mcpInstructions, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
 import { PictureMaker } from './lib/colab/pictures.mjs';
 import { Agent } from './lib/agent.mjs';
 import { Library, libraryFile } from './lib/colab/library.mjs';
@@ -140,7 +140,7 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   // A session only sees generate_image while Claude's role can make pictures.
   // ask_agents only while Claude holds the Foreman role.
   const listTools = () => TOOLS.filter((t) => (t.name !== 'generate_image' || pictures?.canMake('claude')) && (t.name !== 'ask_agents' || store.board.colab.lineup.claudeRoleId === 'foreman'));
-  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, requests: room.requests, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools });
+  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, requests: room.requests, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools, instructions: () => mcpInstructions(presence.prompts().chat) });
   // The prune pass's own calls (/mcp?prune=<token>): tagged with its token, without the tools
   // it may not use, and with no presence, so the pass never touches an attached session's chat.
   const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));
