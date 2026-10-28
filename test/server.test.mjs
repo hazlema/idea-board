@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { browserCommand, parseArgs } from '../server.mjs';
 import { DEFAULT_IMAGE_MODEL } from '../lib/board.mjs';
 import { Library } from '../lib/colab/library.mjs';
-import { AUDIT_TOOLS } from '../lib/audit.mjs';
+import { AUDIT_DENIED } from '../lib/audit.mjs';
 import { defaults } from '../lib/defaults.mjs';
 import { ColabRun } from '../lib/colab/run.mjs';
 
@@ -479,15 +479,15 @@ test('the library carries prompts, and /api/colab sends the defaults', async () 
   }, { colab: factory });
 });
 
-test('/mcp?audit=1 lists only the audit tools and refuses changes', () => withServer(async ({ base, store }) => {
+test('/mcp?audit=1 offers the board tools an audit may use, and they change the board', () => withServer(async ({ base, store }) => {
   const post = async (method, params) => (await fetch(`${base}/mcp?audit=1`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json();
   const list = await post('tools/list', {});
-  assert.deepEqual(list.result.tools.map((t) => t.name).sort(), [...AUDIT_TOOLS].sort());
-  const before = JSON.stringify(store.board);
-  const reply = await post('tools/call', { name: 'add_group', arguments: { title: 'x' } });
-  assert.equal(reply.result.isError, true);
-  assert.match(reply.result.content[0].text, /isn't allowed during an audit/);
-  assert.equal(JSON.stringify(store.board), before);
+  const names = list.result.tools.map((t) => t.name);
+  assert.ok(names.includes('add_group') && names.includes('view_brief'));
+  for (const name of AUDIT_DENIED) assert.ok(!names.includes(name), name);
+  const reply = await post('tools/call', { name: 'add_group', arguments: { title: 'Fixed' } });
+  assert.ok(!reply.result.isError);
+  assert.equal(store.board.brainstorm.pages[0].objects.at(-1).title, 'Fixed');
 }));
 
 test('POST /api/colab/request answers the waiting request once', () => withServer(async ({ base, store }) => {

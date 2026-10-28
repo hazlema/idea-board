@@ -443,7 +443,7 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
   }
 });
 
-test('audit runs a fresh read-only session with file tools', async () => {
+test('audit runs a fresh session that can change the board, with file tools', async () => {
   const echo = `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(2)), session_id: 's_new' }));
 `;
@@ -459,7 +459,8 @@ process.stdout.write(JSON.stringify({ result: JSON.stringify(process.argv.slice(
     assert.equal(config.mcpServers.board.url, 'http://127.0.0.1:1/mcp?audit=1');
     assert.equal(argv[argv.indexOf('--tools') + 1], 'Read,Glob,Grep');
     const denied = argv[argv.indexOf('--disallowedTools') + 1].split(/[ ,]/);
-    assert.ok(denied.includes('mcp__board__add_group'));
+    assert.ok(!denied.includes('mcp__board__add_group'));
+    assert.ok(denied.includes('mcp__board__ask_agents'));
     assert.ok(denied.includes('Read(~/.config/openrouter/**)'));
     assert.ok(!denied.includes('mcp__board__view_board'));
     assert.equal(argv[argv.indexOf('--append-system-prompt') + 1], 'You audit.');

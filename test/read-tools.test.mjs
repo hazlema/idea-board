@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createToolRunner, TOOLS, MAX_CHAT_CHARS, unansweredChat } from '../lib/mcp-tools.mjs';
-import { AUDIT_TOOLS } from '../lib/audit.mjs';
+import { AUDIT_DENIED } from '../lib/audit.mjs';
 import { BoardStore } from '../lib/store.mjs';
 
 const DEPRECATED = '* deprecated, please use view_brief, view_brainstorm, view_flow, view_chat to maximize context';
@@ -129,12 +129,12 @@ test('view_board still works but says it is deprecated, first', () => withStore(
 test('the board readers count as looking at the board; all four stay open during audits and prunes', () => withStore(async (store) => {
   let seen = 0;
   const tools = createToolRunner(store, { markSeen: () => (seen += 1) });
-  const readOnly = createToolRunner(store, null, { readOnly: true });
+  const auditing = createToolRunner(store, null, { audit: true });
   store.beginPrune();
   for (const name of ['view_brief', 'view_brainstorm', 'view_flow', 'view_chat']) {
-    assert.ok(AUDIT_TOOLS.has(name), name);
+    assert.ok(!AUDIT_DENIED.has(name), name);
     await tools.call(name, {});
-    await readOnly.call(name, {});
+    await auditing.call(name, {});
   }
   store.endPrune();
   // view_chat shows none of the board, so it leaves the board changes to be reported.

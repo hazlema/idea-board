@@ -11,7 +11,7 @@ import { BINARY_TURN_END, ColabRun, activityFor, doneFor } from '../lib/colab/ru
 import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 import { PRUNE_REGROW, SECTIONS, Pruner } from '../lib/prune.mjs';
-import { AUDIT_FRAME, AUDIT_TOOLS } from '../lib/audit.mjs';
+import { AUDIT_DENIED, AUDIT_FRAME } from '../lib/audit.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -1227,7 +1227,7 @@ test('a run with no one to audit says it skipped the audit', async () => {
   assert.equal(store.board.chat.at(-1).text, 'Skipped the final audit: no one can audit.');
 });
 
-test('a card that holds the Foreman role audits read-only in a fresh conversation', async () => {
+test('a card that holds the Foreman role audits in a fresh conversation and can fix the board', async () => {
   const { store, run, calls } = setup({
     agents: [A, F],
     complete: (req) => (thisTurn(req).some((m) => m.role === 'tool') ? text('Two duplicates in Mechanics.') : toolCall('add_note', '{"text":"sneaky"}')),
@@ -1235,12 +1235,15 @@ test('a card that holds the Foreman role audits read-only in a fresh conversatio
   assert.deepEqual(run.audit({ focus: 'the lore' }), { ok: true, by: store.board.colab.roster.find((r) => r.id === ID_F).name });
   await run.settled();
   assert.equal(calls.length, 2);
-  assert.deepEqual(new Set(calls[0].tools.map((t) => t.function.name)), AUDIT_TOOLS);
+  const offered = calls[0].tools.map((t) => t.function.name);
+  assert.ok(offered.includes('add_note'));
+  for (const name of AUDIT_DENIED) assert.ok(!offered.includes(name), name);
   assert.ok(calls[0].messages[0].content.startsWith(AUDIT_FRAME));
+  assert.doesNotMatch(AUDIT_FRAME, /only read/);
   assert.match(calls[0].messages[1].content, /the lore/);
-  // The write was refused: the board has no note.
-  assert.match(calls[1].messages.find((m) => m.role === 'tool').content, /^Error:/);
-  assert.equal(store.board.brainstorm.pages[0].objects.length, 0);
+  // The fix went through: the board has the note.
+  assert.doesNotMatch(calls[1].messages.find((m) => m.role === 'tool').content, /^Error:/);
+  assert.equal(store.board.brainstorm.pages[0].objects.length, 1);
   assert.equal(run.conversations.has(ID_F), false);
   const last = store.board.chat.at(-1);
   assert.deepEqual([last.role, last.text], [ID_F, 'Two duplicates in Mechanics.']);

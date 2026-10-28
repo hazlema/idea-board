@@ -686,15 +686,13 @@ test('/mcp?prune=<token> is the pass: guarded, tagged and without its denied too
   store.endPrune();
 }));
 
-test("a read-only runner reads but can't change the board", () => withServer(async ({ store }) => {
-  const tools = createToolRunner(store, null, { readOnly: true });
-  await tools.call('view_board', {});
-  const before = JSON.stringify(store.board);
-  await assert.rejects(tools.call('add_group', { title: 'x' }), /isn't allowed during an audit/);
-  const batch = await tools.call('batch', { calls: [{ tool: 'view_board' }, { tool: 'add_group', args: { title: 'x' } }] });
-  assert.equal(batch.failed.index, 1);
-  assert.match(batch.failed.error, /isn't allowed during an audit/);
-  assert.equal(JSON.stringify(store.board), before);
+test('an audit runner can fix the board but not ask, draw or post', () => withServer(async ({ store }) => {
+  const tools = createToolRunner(store, null, { audit: true });
+  await tools.call('add_group', { title: 'Fixed' });
+  assert.equal(store.board.brainstorm.pages[0].objects.at(-1).title, 'Fixed');
+  for (const name of ['ask_agents', 'generate_image', 'reply', 'wait_for_chat', 'restore_version']) {
+    await assert.rejects(tools.call(name, {}), /isn't allowed during an audit/, name);
+  }
 }));
 
 test('ask_agents reaches the requests object as the caller', async () => {
@@ -709,7 +707,7 @@ test('ask_agents reaches the requests object as the caller', async () => {
   assert.equal(result.id, 'r_1');
   assert.match(result.next, /approve/);
   await assert.rejects(createToolRunner(store, null).call('ask_agents', { steps }), /Requests are not available here\./);
-  await assert.rejects(createToolRunner(store, null, { requests, readOnly: true }).call('ask_agents', { steps }), /isn't allowed during an audit/);
+  await assert.rejects(createToolRunner(store, null, { requests, audit: true }).call('ask_agents', { steps }), /isn't allowed during an audit/);
   await assert.rejects(createToolRunner(store, null, { requests, prune: 'tok' }).call('ask_agents', { steps }), /isn't allowed during a prune/);
   const batch = await createToolRunner(store, null, { requests }).call('batch', { calls: [{ tool: 'ask_agents', args: { steps } }] });
   assert.match(batch.failed.error, /can't run inside a batch/);
