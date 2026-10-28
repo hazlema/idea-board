@@ -152,7 +152,7 @@ What you type decides who answers:
 | `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. Read-only: it changes nothing on the board. Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
 | `//hello` | Sends `/hello` as plain text. |
 
-**Final audit.** At the end of a run the Foreman audits the board once (switch it off under **⋯ → Settings → Audit at the end of a run**), and `/audit` does the same on demand. Claude audits when its role is the Foreman; otherwise the first card with the Foreman role that can answer does; otherwise Claude through the `claude` command. If none of those is available, `/audit` is refused. The audit is read-only (the server enforces it), runs in a fresh session and posts its report in the chat. Its instructions are the "Final audit" text under **Edit roles… → Passes**, where the Prune text is also editable.
+**Final audit.** At the end of a run the Foreman audits the board once (switch it off under **⋯ → Settings → Audit at the end of a run**), and `/audit` does the same on demand. Claude audits when its role is the Foreman; otherwise the first card with the Foreman role that can answer does; otherwise Claude through the `claude` command. If none of those is available, `/audit` is refused. The audit is read-only (the server enforces it), runs in a fresh session and posts its report in the chat. Its instructions are the "Final audit" text under **Edit roles… → Prompts**, where the Prune text is also editable.
 
 **Foreman requests.** Outside a run, whoever holds the Foreman role can ask other agents for work (the `ask_agents` tool): a list of steps, each one agent and what to do. A box opens on the page with the whole list, and nothing is sent until you press **Yes, send it**. Then the steps go out in order, each after the agent before it has answered, as your message to that agent marked as the foreman's request. **No** just says so in the chat. Only one request at a time; `/start` waits until it is answered or done; **Stop** drops the rest. If a step's agent can't answer, the chain stops there with a note. During a run the foreman steers through the chat instead.
 
@@ -181,8 +181,23 @@ History and Ruled out show its name. Each answer is one undoable turn.
 Director & Lore, QA & Playtester, Foreman, Systems Designer) and the shared
 rules every connection follows. Each has text for every board (saved in
 `~/.config/idea-board/colab.json` on Linux, the platform's config folder
-elsewhere) and **Extra for this board** (saved in the board file). Edits
-apply from the next answer.
+elsewhere) and **Extra for this board** (saved in the board file). Under
+**Prompts** are the rest of what the agents are told: **Chat (Claude)** (Claude
+when you chat with it), **Turn** (every agent's turn in a run), **Answer** (an
+agent answering you), **Final audit** and **Prune**. Edits apply from the next
+answer.
+
+**Defaults.** The starting texts ship with the app in `defaults.json` at the
+repo root: `shared` (the shared rules), `roles` (role name → job), and the
+`chat`, `turn`, `answer`, `audit` and `prune` prompts. Whatever your
+`colab.json` is missing (all of it on a first run) is filled in from there.
+**Reset to default** in the role editor puts back the `defaults.json` text for
+a prompt, the shared rules, or a role that came with the app. Editing
+`defaults.json` changes what new installs start with and what Reset gives you;
+it's read when the server starts, and a broken one stops the server with a
+message saying which file and what's wrong. The code keeps only the lines that
+say how the machine works (who the agent is, that its final reply is posted to
+the chat, and so on).
 
 **Pictures.** A role has a **Can make pictures** checkbox in the role editor
 (for example a "Concept Art" role). Connections with such a role get a
