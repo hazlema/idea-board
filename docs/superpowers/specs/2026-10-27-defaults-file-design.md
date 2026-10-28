@@ -51,10 +51,10 @@ only ever reads the user's own settings (`~/.config/idea-board/colab.json`).
 
 3. **The user's settings hold every prompt.** `colab.json` becomes
    `{ rules, roles: [{id, name, job, pictures?}], prompts: { chat, turn, answer, audit, prune } }`.
-   Whenever it's read, anything missing is filled from `defaults.json` and written back:
+   When the app starts, anything missing is filled from `defaults.json` and written back:
    - no file → everything (`shared` → `rules`, the roles, all five prompts);
    - no `rules` → `shared`; no roles → the default roles;
-   - a prompt missing or blank → its default (agents always need one).
+   - a missing prompt → its default (an emptied one stays empty).
    An old file's `passes.audit` / `passes.prune` move into `prompts` (a non-blank one wins over
    the default), and `passes` goes away. So the host's current file keeps its shared rules, roles
    and audit text and gains chat, turn, answer and prune.
