@@ -76,7 +76,15 @@
     closeClaudePopup();
   }
 
+  // Muted connections sit out runs and aren't sent the host's messages; this works during a run too.
+  const muted = $derived(new Set(live.board?.colab?.muted ?? []));
+  function setMuted(id: string, on: boolean): void {
+    void live.send({ type: 'setColabMuted', id, muted: on });
+  }
+  const muteButton = 'text-xs text-muted underline hover:text-text';
+
   function activityOf(i: number): { text: string; thinking: boolean; over: boolean } {
+    if (muted.has(ids[i])) return { text: 'Muted', thinking: false, over: false };
     const c = status?.connections?.[ids[i]];
     if (c?.state === 'over-budget') return { text: 'Over budget', thinking: false, over: true };
     if (c?.state === 'thinking') return { text: `${c.activity ?? 'taking its turn'}…`, thinking: true, over: false };
@@ -169,8 +177,11 @@
         {/each}
       </select>
     </label>
-    <p class="mt-1 text-muted">
-      Activity: {#if claudeThinking}<span class="font-medium" style:color="var(--color-claude)"><span class="animate-pulse">●</span> Thinking…</span>{:else}<span>Waiting</span>{/if}
+    <p class="mt-1 flex items-center gap-1 text-muted">
+      <span class="flex-1">
+        Activity: {#if muted.has('claude')}<span>Muted</span>{:else if claudeThinking}<span class="font-medium" style:color="var(--color-claude)"><span class="animate-pulse">●</span> Thinking…</span>{:else}<span>Waiting</span>{/if}
+      </span>
+      <button type="button" class={muteButton} aria-label="{muted.has('claude') ? 'Unmute' : 'Mute'} Claude" onclick={() => setMuted('claude', !muted.has('claude'))}>{muted.has('claude') ? 'Unmute' : 'Mute'}</button>
     </p>
   </div>
   {#if status?.claude === 'none'}
@@ -250,10 +261,13 @@
           </select>
         </label>
         {#if colabState.loaded && !roles.some((r) => r.id === agent.roleId)}<p class="mt-1 pl-[1.6rem] text-xs text-accent">Role missing</p>{/if}
-        <p class="mt-1 pl-[1.6rem] text-xs {activity.thinking ? 'font-medium' : 'text-muted'} {activity.over ? 'text-accent' : ''}" style:color={activity.thinking ? colorOf(i) : undefined}>
-          Activity: {#if activity.thinking}<span class="animate-pulse">●</span>{/if}
-          {activity.text}
-        </p>
+        <div class="mt-1 flex items-center gap-1 pl-[1.6rem]">
+          <p class="flex-1 text-xs {activity.thinking ? 'font-medium' : 'text-muted'} {activity.over ? 'text-accent' : ''}" style:color={activity.thinking ? colorOf(i) : undefined}>
+            Activity: {#if activity.thinking}<span class="animate-pulse">●</span>{/if}
+            {activity.text}
+          </p>
+          <button type="button" class={muteButton} aria-label="{muted.has(ids[i]) ? 'Unmute' : 'Mute'} connection {i + 2}" onclick={() => setMuted(ids[i], !muted.has(ids[i]))}>{muted.has(ids[i]) ? 'Unmute' : 'Mute'}</button>
+        </div>
       </li>
     {/each}
   </ol>

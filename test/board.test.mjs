@@ -234,6 +234,19 @@ test('resetColabSpent and setClaudeName', () => {
   assert.equal(board.colab.claudeName, 'Opus');
 });
 
+test('setColabMuted mutes and unmutes a connection', () => {
+  const board = emptyBoard();
+  assert.deepEqual(board.colab.muted, []);
+  applyOp(board, { type: 'setColabMuted', id: 'claude', muted: true }, 'user');
+  applyOp(board, { type: 'setColabMuted', id: 'claude', muted: true }, 'user');
+  applyOp(board, { type: 'setColabMuted', id: 'agent:x/y=qa', muted: true }, 'user');
+  assert.deepEqual(board.colab.muted, ['claude', 'agent:x/y=qa']);
+  applyOp(board, { type: 'setColabMuted', id: 'claude', muted: false }, 'user');
+  assert.deepEqual(board.colab.muted, ['agent:x/y=qa']);
+  assert.throws(() => applyOp(board, { type: 'setColabMuted', id: 'claude', muted: 'yes' }, 'user'), /muted must be true or false/);
+  assert.throws(() => applyOp(board, { type: 'setColabMuted', muted: true }, 'user'), /id/);
+});
+
 const lineupOp = (extra = {}) => ({ type: 'setColabLineup', agents: [], rounds: 3, budget: 2, ...extra });
 
 test('lineup keeps prune settings', () => {

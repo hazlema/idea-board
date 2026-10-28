@@ -556,3 +556,17 @@ test('the Claude popup stays closed once a run that started while it was open en
   await waitFor(() => expect(screen.getByRole('button', { name: '1. Claude · Sonnet' })).toBeEnabled());
   expect(screen.queryByRole('group', { name: "Claude's model" })).toBeNull();
 });
+
+test('Mute and Unmute send the switch for Claude and for a card, even during a run', async () => {
+  const board = emptyBoard();
+  board.colab.lineup.agents = [{ model: 'openai/gpt-6.1-sol', roleId: 'qa', settings: {} }];
+  board.colab.muted = ['agent:openai/gpt-6.1-sol=qa'];
+  live.board = board;
+  live.colab = { ...idle, state: 'running', round: 1 };
+  render(ConnectionsPanel);
+  await fireEvent.click(screen.getByRole('button', { name: 'Mute Claude' }));
+  expect(lastLineup()).toEqual({ type: 'setColabMuted', id: 'claude', muted: true });
+  await fireEvent.click(screen.getByRole('button', { name: 'Unmute connection 2' }));
+  expect(lastLineup()).toEqual({ type: 'setColabMuted', id: 'agent:openai/gpt-6.1-sol=qa', muted: false });
+  expect(screen.getByText(/Activity:\s*Muted/)).toBeInTheDocument();
+});

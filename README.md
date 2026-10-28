@@ -135,6 +135,10 @@ Thinking…, or the tool it is using). You talk to all of them in the chat.
   tools, with the price per million tokens) and a role. Drag the grip to
   reorder (the order is the turn order); **✕** removes a card. Numbers are the
   positions in the sidebar when you send a message.
+- **Mute** (on Claude and on every card, even during a run): a muted connection
+  is skipped in every job of the batch and isn't sent your messages; `/chat` to
+  it is refused. **Unmute** brings it back. Handy when, say, the art is good
+  enough and you want the Art Director to stop.
 - The sidebar footer holds **Rounds**, **Budget ($)**, **Turn timeout (min)**,
   **Spent $0.42 of $5** with **Reset**, and **Edit roles…**.
 - The card whose turn it is lights up, and during a run the chat header reads
@@ -146,6 +150,7 @@ What you type decides who answers:
 |---|---|
 | `What do you think of this?` | Everyone connected answers once, at the same time, in their own role. They don't read each other's answers to it. |
 | `/chat 2 What do you think?` (or `/c 2 …`) | Only connection 2 answers. The others see the message later but don't reply. |
+| `/r And the doorstep?` | Like IRC: goes to whoever your last `/chat` went to, so you don't retype `/chat 2`. |
 | `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
 | `/stop` | Ends the run after the current turn (same as **Stop**). Also drops a foreman's request that is waiting, or the rest of one under way. |
 | `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, plain bullets included, without touching accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |

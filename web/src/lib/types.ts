@@ -213,6 +213,8 @@ export interface Colab {
   lastPruneAt: string | null;
   /** The foreman's request, while one is open. */
   request?: ForemanRequest | null;
+  /** Connections that sit out runs and aren't sent the host's messages ('claude' or a card id). */
+  muted?: string[];
 }
 
 /** What the agents are told, by occasion. The server fills any missing one from the defaults. */

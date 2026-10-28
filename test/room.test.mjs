@@ -331,3 +331,24 @@ test("the agent and the session read the library's prompts as they are now", () 
   assert.equal(agent.prompts().turn, 'TURN-Y');
   assert.equal(presence.prompts().turn, 'TURN-Y');
 });
+
+test('/r goes to whoever /chat last went to', () => {
+  const { room } = setup();
+  assert.throws(() => room.userChat({ text: '/r hello?' }), /No one to reply to yet: use \/chat N first\./);
+  room.userChat({ text: '/chat 3 check the map' });
+  const { message } = room.userChat({ text: '/r and the doorstep?' });
+  assert.deepEqual(message.to, [ID_B]);
+  assert.deepEqual(message.owed, [ID_B]);
+  assert.equal(message.text, 'and the doorstep?');
+});
+
+test('a muted connection is not owed messages and /chat to it is refused', () => {
+  const { room, store } = setup();
+  store.apply({ type: 'setColabMuted', id: ID_A, muted: true }, 'user');
+  assert.deepEqual(room.userChat({ text: 'hi' }).message.owed, ['claude', ID_B]);
+  assert.throws(() => room.userChat({ text: '/chat 2 hi' }), /can't answer right now \(muted\)/);
+  store.apply({ type: 'setColabMuted', id: 'claude', muted: true }, 'user');
+  assert.deepEqual(room.userChat({ text: 'hi again' }).message.owed, [ID_B]);
+  store.apply({ type: 'setColabMuted', id: ID_A, muted: false }, 'user');
+  assert.deepEqual(room.userChat({ text: 'and again' }).message.owed, [ID_A, ID_B]);
+});

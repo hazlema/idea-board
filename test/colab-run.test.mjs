@@ -207,6 +207,25 @@ test("Claude's binary turn gets the library's turn prompt", async () => {
   assert.doesNotMatch(prompts[0], /3 to 5 sentences/);
 });
 
+test('a muted card is skipped in every job of the batch', async () => {
+  const { store, run } = setup({ agents: [A, B], rounds: 2, complete: () => text('done') });
+  store.apply({ type: 'setColabMuted', id: ID_A, muted: true }, 'user');
+  kickoff(store, run);
+  await run.finished;
+  assert.deepEqual(chatPosts(store).map((m) => m.role), [ID_B, ID_B]);
+});
+
+test('muted Claude sits out the batch', async () => {
+  const prompts = [];
+  const claude = { via: () => 'binary', takeTurn: async (prompt) => { prompts.push(prompt); return { ok: true, text: 'claude turn' }; } };
+  const { store, run } = setup({ agents: [A], rounds: 1, claude, complete: () => text('card turn') });
+  store.apply({ type: 'setColabMuted', id: 'claude', muted: true }, 'user');
+  kickoff(store, run);
+  await run.finished;
+  assert.equal(prompts.length, 0);
+  assert.deepEqual(chatPosts(store).map((m) => m.role), [ID_A]);
+});
+
 test('the background agent stays quiet during a run', async () => {
   const { dir, store, run } = setup({ complete: noteThenDone });
   const agent = new Agent(store, presence, { mcpUrl: 'http://127.0.0.1:1/mcp', cwd: dir, claudeBin: '/nonexistent', log: () => {}, quiet: () => run.status.state !== 'idle' });

@@ -157,7 +157,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /start · /stop · /prune · /audit · Shift+↑ for earlier messages')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /r · /start · /stop · /prune · /audit · Shift+↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
