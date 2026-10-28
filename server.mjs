@@ -15,6 +15,7 @@ import { createMcpHandler, createToolRunner, Presence, PRUNE_DENIED, TOOLS } fro
 import { PictureMaker } from './lib/colab/pictures.mjs';
 import { Agent } from './lib/agent.mjs';
 import { Library, libraryFile, PASS_DEFAULTS } from './lib/colab/library.mjs';
+import { defaults } from './lib/defaults.mjs';
 import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
 import { ColabRun } from './lib/colab/run.mjs';
 import { Pruner } from './lib/prune.mjs';
@@ -364,6 +365,12 @@ function main() {
   if (options.help) {
     console.log(USAGE);
     return;
+  }
+  try {
+    defaults();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
   }
   const store = new BoardStore(options.file);
   const presence = new Presence(store);

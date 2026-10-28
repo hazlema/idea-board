@@ -5,6 +5,8 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { withServer } from './helpers.mjs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { browserCommand, parseArgs } from '../server.mjs';
 import { DEFAULT_IMAGE_MODEL } from '../lib/board.mjs';
 import { Library } from '../lib/colab/library.mjs';
@@ -503,3 +505,22 @@ test('Stop on the page drops a waiting request', () => withServer(async ({ base,
   assert.equal((await post(base, '/api/colab/stop')).status, 200);
   assert.equal(store.board.colab.request, null);
 }));
+
+test("the server won't start with a broken defaults file", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-broken-'));
+  const broken = path.join(dir, 'defaults.json');
+  fs.writeFileSync(broken, '{');
+  const server = fileURLToPath(new URL('../server.mjs', import.meta.url));
+  const child = spawn(process.execPath, [server, path.join(dir, 'board.json'), '--port', '4999', '--no-open'], {
+    env: { ...process.env, IDEA_BOARD_DEFAULTS: broken, IDEA_BOARD_CLAUDE: '/nonexistent' },
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  const code = await new Promise((resolve) => {
+    const timer = setTimeout(() => { child.kill(); resolve('timed out'); }, 5000);
+    child.on('exit', (exitCode) => { clearTimeout(timer); resolve(exitCode); });
+  });
+  assert.equal(code, 1);
+  assert.ok(stderr.includes(broken), stderr);
+  assert.match(stderr, /not valid JSON/);
+});
