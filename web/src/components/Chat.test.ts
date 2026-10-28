@@ -5,7 +5,7 @@ import { emptyBoard } from '../test-board';
 
 vi.mock('$lib/api', () => {
   const op = vi.fn().mockResolvedValue({});
-  return { op, chat: (o: unknown) => op(o), stopColab: vi.fn().mockResolvedValue({}) };
+  return { op, chat: (o: unknown) => op(o), stopColab: vi.fn().mockResolvedValue({}), uploadFile: vi.fn().mockResolvedValue('playtest-3.log') };
 });
 
 import * as api from '$lib/api';
@@ -19,6 +19,7 @@ import type { VersionMeta } from '$lib/types';
 beforeEach(() => {
   localStorage.clear();
   vi.mocked(api.op).mockClear();
+  vi.mocked(api.uploadFile).mockClear();
   live.board = emptyBoard();
   live.pointing = null;
   live.agent = 'idle';
@@ -352,4 +353,37 @@ test('Stop shows while a foreman request plays', async () => {
   render(Chat);
   await fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
   expect(api.stopColab).toHaveBeenCalled();
+});
+
+const attach = async (name: string) => {
+  const input = screen.getByLabelText('Attach a file') as HTMLInputElement;
+  const file = new File(['jump 1\njump 2'], name, { type: 'text/plain' });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await fireEvent.change(input);
+  return file;
+};
+
+test('attaching a file uploads it and puts its name in the half-typed message', async () => {
+  render(Chat);
+  await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: 'check the jumps in' } });
+  const file = await attach('playtest 3.log');
+  expect(api.uploadFile).toHaveBeenCalledWith(file);
+  await waitFor(() => expect(chatDraft.text).toBe('check the jumps in 📎 playtest-3.log '));
+});
+
+test('a refused attachment says why and leaves the message alone', async () => {
+  vi.mocked(api.uploadFile).mockRejectedValueOnce(new Error('not a text file (attach logs and other plain text)'));
+  render(Chat);
+  await attach('game.exe');
+  expect(await screen.findByRole('alert')).toHaveTextContent('not a text file');
+  expect(chatDraft.text).toBe('');
+});
+
+test('an attached file in a message opens in a new tab', () => {
+  live.board = { ...emptyBoard(), chat: [{ id: 'm1', role: 'user', text: 'see 📎 playtest-3.log for the jumps', at: '2026-10-28T00:00:00Z', owed: [] }] };
+  render(Chat);
+  const link = screen.getByRole('link', { name: '📎 playtest-3.log' });
+  expect(link).toHaveAttribute('href', '/files/playtest-3.log');
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(screen.getByText(/for the jumps/)).toBeInTheDocument();
 });

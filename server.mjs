@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_ASSET_BYTES } from './lib/assets.mjs';
+import { FILE_NAME, MAX_FILE_BYTES } from './lib/files.mjs';
 import { ConflictError, OpError } from './lib/board.mjs';
 import { AUDIT_DENIED } from './lib/audit.mjs';
 import { ASSET_NAME } from './lib/brainstorm.mjs';
@@ -66,9 +67,9 @@ function readBody(req) {
 
 // An uploaded picture, read as raw bytes. Past the cap we stop buffering and
 // let the 413 answer close the connection rather than reading the rest.
-function readRawBody(req, maxBytes) {
+function readRawBody(req, maxBytes, what = 'picture is larger than 30 MB') {
   return new Promise((resolve, reject) => {
-    const tooLarge = () => Object.assign(new Error('picture is larger than 30 MB'), { status: 413, closeConnection: true });
+    const tooLarge = () => Object.assign(new Error(what), { status: 413, closeConnection: true });
     if (Number(req.headers['content-length']) > maxBytes) return reject(tooLarge());
     let size = 0;
     const chunks = [];
@@ -249,6 +250,30 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
           if (error instanceof OpError) return sendJson(res, 400, { error: error.message });
           throw error;
         }
+      }
+
+      // A file the host attaches in the chat; ?name= is the name it had on their computer.
+      if (url.pathname === '/api/files' && req.method === 'POST') {
+        const bytes = await readRawBody(req, MAX_FILE_BYTES, 'file is larger than 10 MB');
+        try { return sendJson(res, 200, { name: store.files.save(url.searchParams.get('name') ?? '', bytes) }); }
+        catch (error) {
+          if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
+          throw error;
+        }
+      }
+
+      if (url.pathname.startsWith('/files/') && req.method === 'GET') {
+        // As with pictures, the name is checked before the disk is touched.
+        const name = url.pathname.slice('/files/'.length);
+        if (!FILE_NAME.test(name)) return sendJson(res, 400, { error: 'not an attachment name' });
+        let bytes;
+        try { bytes = fs.readFileSync(store.files.resolve(name)); }
+        catch (error) {
+          if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not found' });
+          throw error;
+        }
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache', 'content-length': bytes.length });
+        return res.end(bytes);
       }
 
       if (url.pathname === '/api/assets/url' && req.method === 'POST') {

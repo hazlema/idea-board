@@ -94,6 +94,41 @@
     return run?.claude === 'mcp' ? 'A Claude session is listening' : '';
   });
 
+  // "📎 name" in a message is a file the host attached; it opens in a new tab.
+  const ATTACHED = /📎 ([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/g;
+
+  function parts(text: string): { text: string; file?: string }[] {
+    const out: { text: string; file?: string }[] = [];
+    let last = 0;
+    for (const match of text.matchAll(ATTACHED)) {
+      if (match.index > last) out.push({ text: text.slice(last, match.index) });
+      out.push({ text: match[0], file: match[1] });
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) out.push({ text: text.slice(last) });
+    return out;
+  }
+
+  let uploading = $state(false);
+
+  // Uploads the picked file and adds "📎 name" to what is being typed, ready to send.
+  async function attach(input: HTMLInputElement): Promise<void> {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    error = '';
+    uploading = true;
+    try {
+      const name = await api.uploadFile(file);
+      const draft = chatDraft.text;
+      chatDraft.text = `${draft}${draft && !/\s$/.test(draft) ? ' ' : ''}📎 ${name} `;
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      uploading = false;
+    }
+  }
+
   const showHint = $derived(chatDraft.text.trimStart().startsWith('/'));
 
   // Within this many px of the bottom counts as reading the newest.
@@ -200,7 +235,7 @@
         {@const message = item.message}
         <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {isAi(message.role) ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
           <div class="text-[0.8em] font-medium" style:color={authorColor(live.board, message.role)}>{authorName(live.board, message.role)}{#if message.to?.length}<span class="ml-1.5 text-muted">→ {message.to.map(targetTag).join(', ')}</span>{/if}{#if message.request}<span class="ml-1.5 text-muted">· {authorName(live.board, message.request.by)}'s request ({message.request.step} of {message.request.of}), approved</span>{/if}{#if message.start}<span class="ml-1.5 text-muted">▶ run started</span>{/if}</div>
-          <div class="break-words whitespace-pre-wrap">{message.text}</div>
+          <div class="break-words whitespace-pre-wrap">{#each parts(message.text) as part, i (i)}{#if part.file}<a class="text-accent underline" href="/files/{part.file}" target="_blank" rel="noopener">{part.text}</a>{:else}{part.text}{/if}{/each}</div>
           {#if message.stats}
             <div class="mt-1 text-[0.75em] text-muted">{turnLine(message.stats)}</div>
           {/if}
@@ -233,18 +268,26 @@
         <button class="text-muted hover:text-text" aria-label="Stop talking about {pointing.label}" onclick={() => (live.pointing = null)}>×</button>
       </div>
     {/if}
-    <textarea
-      bind:value={chatDraft.text}
-      oninput={() => {
-        error = '';
-        chatHistory.reset();
-      }}
-      {onkeydown}
-      rows="2"
-      placeholder={previewing ? 'Close the preview to chat' : PLACEHOLDER}
-      disabled={previewing}
-      class="w-full resize-none rounded-md border border-line bg-ink px-3 py-2 placeholder:text-muted"
-    ></textarea>
+    <div class="flex items-start gap-2">
+      <textarea
+        bind:value={chatDraft.text}
+        oninput={() => {
+          error = '';
+          chatHistory.reset();
+        }}
+        {onkeydown}
+        rows="2"
+        placeholder={previewing ? 'Close the preview to chat' : PLACEHOLDER}
+        disabled={previewing}
+        class="w-full resize-none rounded-md border border-line bg-ink px-3 py-2 placeholder:text-muted"
+      ></textarea>
+      <label
+        class="shrink-0 cursor-pointer rounded-md border border-line px-2 py-1.5 text-muted hover:bg-raised hover:text-text {uploading || previewing ? 'pointer-events-none opacity-50' : ''}"
+        title="Attach a text file, such as a playtest log (10 MB at most)"
+        ><span aria-hidden="true">{uploading ? '…' : '📎'}</span>
+        <input type="file" class="sr-only" aria-label="Attach a file" disabled={uploading || previewing} onchange={(e) => void attach(e.currentTarget)} />
+      </label>
+    </div>
     {#if showHint}<div class="text-[0.8em] text-muted">Commands: {COMMANDS_HINT}</div>{/if}
     {#if error}<div role="alert" class="text-[0.8em] text-red-400">{error}</div>{/if}
   </div>

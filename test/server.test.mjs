@@ -212,6 +212,35 @@ test('the server refuses a 40 MB upload and serves stored pictures safely', () =
   assert.equal((await fetch(`${base}/assets/${'0'.repeat(32)}.png`)).status, 404);
 }));
 
+test('POST /api/files stores a text file under its name and GET /files/<name> serves it as plain text', () => withServer(async ({ base, store }) => {
+  const up = (name, body) => fetch(`${base}/api/files?name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body });
+  const first = await up('playtest 3.log', Buffer.from('jump 1\njump 2\n'));
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { name: 'playtest-3.log' });
+  assert.deepEqual(await (await up('playtest 3.log', Buffer.from('again'))).json(), { name: 'playtest-3-2.log' });
+
+  const got = await fetch(`${base}/files/playtest-3.log`);
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(got.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(await got.text(), 'jump 1\njump 2\n');
+
+  const binary = await up('game.exe', Buffer.from([0x4d, 0x5a, 0x00]));
+  assert.equal(binary.status, 400);
+  assert.match((await binary.json()).error, /not a text file/);
+  const big = await up('big.log', Buffer.alloc(11 * 1024 * 1024, 0x61));
+  assert.equal(big.status, 413);
+  assert.match((await big.json()).error, /10 MB/);
+  assert.deepEqual(store.files.list().map((f) => f.name), ['playtest-3-2.log', 'playtest-3.log']);
+
+  for (const bad of ['../board.json', '..%2Fboard.json', '%2e%2e/board.json', '.hidden']) {
+    const res = await fetch(`${base}/files/${bad}`);
+    assert.ok([400, 404].includes(res.status), `${bad} -> ${res.status}`);
+  }
+  assert.equal((await fetch(`${base}/files/missing.log`)).status, 404);
+  assert.equal((await fetch(`${base}/api/files?name=x.log`, { method: 'POST', headers: { origin: 'http://evil.example' }, body: 'x' })).status, 403);
+}));
+
 test('POST /api/assets/url fetches a picture and reports failures as 400', () => withPictureHost((pics) => withServer(async ({ base }) => {
   const post = (url) => fetch(`${base}/api/assets/url`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) });
   const ok = await post(`${pics}/pic.png`);

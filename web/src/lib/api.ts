@@ -56,6 +56,16 @@ export async function uploadPicture(blob: Blob): Promise<string> {
   return reply.asset;
 }
 
+/** Attaches a text file for the chat; returns the name it was stored under. */
+export async function uploadFile(file: File): Promise<string> {
+  const reply = await request<{ name: string }>(`/api/files?name=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: file,
+  });
+  return reply.name;
+}
+
 export async function ingestUrl(url: string): Promise<string> {
   return (await post<{ asset: string }>('/api/assets/url', { url })).asset;
 }

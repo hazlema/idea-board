@@ -151,3 +151,20 @@ test('a request step in the chat says whose request it passes on', () => withSto
   say(store, 'user', 'for claude', { owed: ['claude'], request: { by: 'agent:x=qa', step: 1, of: 1 } });
   assert.equal(unansweredChat(store.board)[0].request_from, 'X · QA');
 }));
+
+test('read_attachment lists the attached files, then reads one in chunks', () => withStore(async (store) => {
+  const runner = createToolRunner(store);
+  assert.deepEqual(await runner.call('read_attachment', {}), { files: [] });
+  const name = store.files.save('playtest-3.log', Buffer.from(Array.from({ length: 600 }, (_, i) => `tick ${i + 1}`).join('\n')));
+  assert.deepEqual((await runner.call('read_attachment', {})).files, [{ name: 'playtest-3.log', bytes: fs.statSync(store.files.resolve(name)).size }]);
+  const first = await runner.call('read_attachment', { name });
+  assert.equal(first.to_line, 500);
+  assert.match(first.more, /from_line 501/);
+  const rest = await runner.call('read_attachment', { name, from_line: 501 });
+  assert.equal(rest.text.split('\n')[0], 'tick 501');
+  assert.equal(rest.more, undefined);
+  await assert.rejects(runner.call('read_attachment', { name: 'nope.log' }), /no attachment called nope.log/);
+  // Audits and prunes may read attachments too.
+  assert.equal(AUDIT_DENIED.has('read_attachment'), false);
+  assert.equal((await createToolRunner(store, null, { audit: true }).call('read_attachment', { name })).from_line, 1);
+}));
