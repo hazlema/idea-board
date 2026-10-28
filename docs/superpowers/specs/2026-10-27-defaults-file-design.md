@@ -46,18 +46,18 @@ motto: KISS, and everything that's related goes together.
    code relies on, stays `foreman`. *(Our call.)* The user's `colab.json` keeps its current shape
    (`rules`, `roles` array, `passes`), so existing files and boards keep working.
 
-4. **Chat, turn and answer become editable in the app**, like audit and prune are now. In the
-   Roles box (Connections → Edit roles…), the "Passes" list becomes "Prompts" (or similar) with
-   Chat, Turn, Answer, Final audit and Prune. Each pane works like `PassPane` today: text equal to
-   the default is stored as nothing, an empty override falls back to the default, and **Reset to
-   default** restores the `defaults.json` text. The overrides live in `colab.json` alongside the
-   existing `passes` (extending `passes` with `chat`, `turn`, `answer` is fine). The next agent
-   turn uses the change; no restart.
+4. **Chat, turn and answer are edited in the file, not the app.** They are never copied into
+   `colab.json`; the code reads them from `defaults.json` each time it builds a prompt (re-reading
+   the file when it has changed), so the host edits the file and the next agent turn uses it, no
+   restart. KISS: the host asked for a file to change, not more panes. Audit and prune keep their
+   existing app panes and overrides; only their defaults (and Reset to default) now come from the
+   file.
 
 5. **Startup fails loudly** if `defaults.json` is missing, isn't valid JSON, lacks a key, has an
    empty text, or has no roles — naming the file and what's wrong. The same limits as the
    library's validation apply (role names ≤ 80 chars, texts ≤ 20,000, 1–20 roles, unique ids).
-   Edits to `defaults.json` take effect on restart; that's fine (it's for shipping, not tuning).
+   If an edit made while running breaks the file, the server keeps using the last good copy and
+   says so in its log (and on the page if that is simple); fixing the file takes effect again.
 
 6. **Reworded defaults.** `shared` is the host's new text (below), verbatim. The builder rewords
    `turn`, `answer`, `chat` and the four role jobs so they agree with it (see "The new texts").
@@ -175,14 +175,15 @@ Everything you write must be clear and readable by a human.
   and `ask_agents` outside a run. The Foreman also now owns what `shared` gives it: approving
   decisions and applying out-of-role changes others propose.
 
-The host will review these in the app and keep tuning them; they don't need to be perfect.
+The host will review these in the file and keep tuning them; they don't need to be perfect.
 
 ## Non-goals
 
 - The board tools' own descriptions (`DEFINITIONS` in `lib/mcp-tools.mjs`) stay in code.
-- No save-back button from the app to `defaults.json`; the host copies text over by hand.
+- No save-back button from the app to `defaults.json`, and no app panes for chat, turn or
+  answer; the host edits the file.
 - Shared rules and roles in an existing `colab.json` don't follow `defaults.json` and get no
-  Reset button (only the prompts in item 4 do). The host pastes the new `shared` into their own
+  Reset button (audit and prune keep theirs). The host pastes the new `shared` into their own
   copy through the app.
 - The card prompt's Brief/Brainstorm/Flowchart description is dropped from code, not moved to a
   new key: `shared` now describes the board *(our call)*. An existing `colab.json` keeps its old
@@ -195,7 +196,6 @@ The host will review these in the app and keep tuning them; they don't need to b
 
 - Where the loading code lives and how it's passed around (a small `lib/defaults.mjs` that reads
   and validates the file once at startup is the obvious shape); tests can load a fixture.
-- The exact name of the Prompts list and its panes, following `RoleEditor`/`PassPane`.
 - How `passDefaults` reaches the page (today `/api/colab` sends `passDefaults`; extend it).
 - Exact wording of the reworded texts, within the rules above.
 - Updating the README where it describes roles, passes and `colab.json`.
