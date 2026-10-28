@@ -146,9 +146,8 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
   const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));
   const pruneMcp = (token) => createMcpHandler(createToolRunner(store, null, { prune: token }), { listTools: () => pruneTools });
 
-  // The audit's calls (/mcp?audit=1): it may fix the board, but not ask, draw or post.
-  const auditTools = TOOLS.filter((t) => !AUDIT_DENIED.has(t.name));
-  const auditMcp = createMcpHandler(createToolRunner(store, null, { audit: true }), { listTools: () => auditTools });
+  // The audit's calls (/mcp?audit=1): Claude's tools, less what an audit may not use.
+  const auditMcp = createMcpHandler(createToolRunner(store, null, { audit: true, pictures, requests: room.requests }), { listTools: () => listTools().filter((t) => !AUDIT_DENIED.has(t.name)) });
 
   return http.createServer(async (req, res) => {
     // Only this machine, and only this page: block DNS rebinding and

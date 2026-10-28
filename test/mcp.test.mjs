@@ -690,7 +690,7 @@ test('an audit runner can fix the board but not ask, draw or post', () => withSe
   const tools = createToolRunner(store, null, { audit: true });
   await tools.call('add_group', { title: 'Fixed' });
   assert.equal(store.board.brainstorm.pages[0].objects.at(-1).title, 'Fixed');
-  for (const name of ['ask_agents', 'generate_image', 'reply', 'wait_for_chat', 'restore_version']) {
+  for (const name of ['reply', 'wait_for_chat', 'restore_version']) {
     await assert.rejects(tools.call(name, {}), /isn't allowed during an audit/, name);
   }
 }));
@@ -699,7 +699,7 @@ test('ask_agents reaches the requests object as the caller', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-ask-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   const asked = [];
-  const requests = { ask: (author, steps) => { asked.push([author, steps]); return { waiting: true, id: 'r_1' }; } };
+  const requests = { ask: (author, steps, options) => { asked.push(options ? [author, steps, options] : [author, steps]); return { waiting: true, id: 'r_1' }; } };
   const steps = [{ agent: 'qa', request: 'check it' }];
   const result = await createToolRunner(store, null, { requests }).call('ask_agents', { steps });
   assert.deepEqual(asked, [['claude', steps]]);
@@ -707,11 +707,12 @@ test('ask_agents reaches the requests object as the caller', async () => {
   assert.equal(result.id, 'r_1');
   assert.match(result.next, /approve/);
   await assert.rejects(createToolRunner(store, null).call('ask_agents', { steps }), /Requests are not available here\./);
-  await assert.rejects(createToolRunner(store, null, { requests, audit: true }).call('ask_agents', { steps }), /isn't allowed during an audit/);
+  await createToolRunner(store, null, { requests, audit: true }).call('ask_agents', { steps });
+  assert.deepEqual(asked.at(-1), ['claude', steps, { audit: true }]);
   await assert.rejects(createToolRunner(store, null, { requests, prune: 'tok' }).call('ask_agents', { steps }), /isn't allowed during a prune/);
   const batch = await createToolRunner(store, null, { requests }).call('batch', { calls: [{ tool: 'ask_agents', args: { steps } }] });
   assert.match(batch.failed.error, /can't run inside a batch/);
-  assert.equal(asked.length, 1);
+  assert.equal(asked.length, 2);
   store.historyLog.flush();
   fs.rmSync(dir, { recursive: true });
 });

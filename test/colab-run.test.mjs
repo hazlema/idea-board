@@ -1240,6 +1240,8 @@ test('a card that holds the Foreman role audits in a fresh conversation and can 
   for (const name of AUDIT_DENIED) assert.ok(!offered.includes(name), name);
   assert.ok(calls[0].messages[0].content.startsWith(AUDIT_FRAME));
   assert.doesNotMatch(AUDIT_FRAME, /only read/);
+  // The Foreman may hand work on: ask_agents is offered to its audit.
+  assert.ok(offered.includes('ask_agents'));
   assert.match(calls[0].messages[1].content, /the lore/);
   // The fix went through: the board has the note.
   assert.doesNotMatch(calls[1].messages.find((m) => m.role === 'tool').content, /^Error:/);

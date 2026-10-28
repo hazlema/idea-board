@@ -114,6 +114,27 @@ test('refused in a run and during an audit', () => {
   cleanup();
 });
 
+test('an audit may ask during the run and its own audit; the chain waits for both to end', async () => {
+  const { store, requests, colab, dispatched, cleanup } = setup();
+  let finish;
+  colab.settled = () => new Promise((resolve) => { finish = resolve; });
+  colab.status = { state: 'running', auditing: true };
+  const { id, waiting } = requests.ask('claude', [{ agent: 'art', request: 'redo the doorstep' }], { audit: true });
+  assert.equal(waiting, true);
+  requests.answer(id, true);
+  await flush();
+  assert.equal(dispatched.length, 0);
+  colab.status = { state: 'idle' };
+  finish();
+  await flush();
+  assert.equal(dispatched.length, 1);
+  assert.equal(dispatched[0].text, 'redo the doorstep');
+  assert.equal(store.board.colab.request.state, 'playing');
+  requests.cancel();
+  await requests.settled();
+  cleanup();
+});
+
 test('one request at a time', () => {
   const { requests, cleanup } = setup();
   requests.ask('claude', [{ agent: 'art', request: 'x' }]);
