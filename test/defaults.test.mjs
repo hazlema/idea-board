@@ -90,3 +90,10 @@ test("the shipped texts follow the host's shared rules", () => {
   assert.match(foreman.job, /1 to 10/);
   assert.deepEqual(d.roles.map((r) => r.name), ['Creative Director & Lore', 'QA & Playtester', 'Foreman', 'Systems Designer']);
 });
+
+// Cards get the board in their messages; Claude's run turn doesn't, so the turn text can't promise it.
+test('the turn text holds for an agent whose messages carry no board', () => {
+  const { turn } = defaults().prompts;
+  assert.doesNotMatch(turn, /You already have it/);
+  assert.match(turn, /If the board isn't in your messages, read it/);
+});

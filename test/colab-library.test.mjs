@@ -62,6 +62,16 @@ test('a full library file is left byte-for-byte alone', () => {
   assert.equal(fs.readFileSync(file, 'utf8'), bytes);
 });
 
+test('a library file with a BOM loads, and a broken one is named in the error', () => {
+  const file = tmpFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `\uFEFF${JSON.stringify(defaultLibrary())}`);
+  assert.deepEqual(new Library(file).get(), defaultLibrary());
+  fs.writeFileSync(file, '{"rules": "x",}');
+  assert.throws(() => new Library(file).get(), (error) => error.message.startsWith(`${file}: not valid JSON`));
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"rules": "x",}');
+});
+
 test('bad prompt values are replaced', () => {
   const file = tmpFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });
