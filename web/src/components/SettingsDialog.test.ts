@@ -23,7 +23,7 @@ const idle = { state: 'idle', round: 0, rounds: 5, current: null, spent: 0, budg
 
 beforeEach(() => {
   vi.mocked(api.op).mockClear();
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, passDefaults: { audit: '', prune: '' }, connections: [] });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '' } }, connections: [] });
   vi.mocked(api.colabModels).mockResolvedValue([]);
   vi.mocked(api.colabImageModels).mockResolvedValue(imageModels);
   colabState.loaded = false;

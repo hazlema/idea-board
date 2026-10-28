@@ -215,16 +215,26 @@ export interface Colab {
   request?: ForemanRequest | null;
 }
 
-/** The texts of the one-off passes; a missing one means the default. */
-export interface Passes {
-  audit?: string;
-  prune?: string;
+/** What the agents are told, by occasion. The server fills any missing one from the defaults. */
+export interface Prompts {
+  chat: string;
+  turn: string;
+  answer: string;
+  audit: string;
+  prune: string;
 }
 
 export interface Library {
   rules: string;
   roles: Role[];
-  passes?: Passes;
+  prompts?: Prompts;
+}
+
+/** The shipped starting texts (defaults.json), which Reset to default puts back. */
+export interface Defaults {
+  shared: string;
+  roles: Role[];
+  prompts: Prompts;
 }
 
 export interface Role {

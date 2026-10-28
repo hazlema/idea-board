@@ -61,6 +61,11 @@
     delay: 500,
   });
 
+  // Reset to default: the shipped text for the shared rules, or for a role that came with the app.
+  const shipped = $derived(roleId === null ? colabState.defaults.shared : colabState.defaults.roles.find((r) => r.id === roleId)?.job);
+  const current = $derived(roleId === null ? colabState.library.rules : role?.job);
+  const reset = (): Promise<unknown> => (roleId === null ? saveLibrary((l) => ({ ...l, rules: shipped ?? '' })) : saveLibrary(patchRole({ job: shipped })));
+
   const field = 'w-full resize-y rounded-md border border-line bg-ink px-2 py-1.5 text-text focus:border-accent';
 </script>
 
@@ -89,6 +94,14 @@
       >Extra for this board
       <textarea rows="4" class={field} {...extra.attrs}></textarea>
     </label>
+  {/if}
+  {#if shipped !== undefined && (roleId === null || role)}
+    <button
+      type="button"
+      class="self-start rounded-md border border-line px-2 py-1 text-muted hover:border-muted hover:text-text disabled:opacity-40"
+      disabled={current === shipped}
+      onclick={reset}>Reset to default</button
+    >
   {/if}
   {#if role}
     <button

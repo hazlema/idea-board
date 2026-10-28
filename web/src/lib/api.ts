@@ -1,4 +1,4 @@
-import type { BoardInfo, ConnectionInfo, HistoryRow, Library, Model, Op, RunStatus, Skipped, VersionMeta, Board } from './types';
+import type { BoardInfo, ConnectionInfo, Defaults, HistoryRow, Library, Model, Op, RunStatus, Skipped, VersionMeta, Board } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -70,7 +70,7 @@ export interface ColabInfo {
   status: RunStatus;
   hasKey: boolean;
   library: Library;
-  passDefaults: { audit: string; prune: string };
+  defaults: Defaults;
   connections: ConnectionInfo[];
 }
 

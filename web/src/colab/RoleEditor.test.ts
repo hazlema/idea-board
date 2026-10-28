@@ -35,6 +35,7 @@ beforeEach(() => {
   live.board = board;
   live.colab = idle;
   colabState.library = library();
+  colabState.defaults = { shared: 'Default rules.', roles: [{ id: 'foreman', name: 'Foreman', job: 'Default build.' }], prompts: D };
   colabState.loaded = true;
   colabState.hasKey = true;
   vi.mocked(api.saveLibrary).mockImplementation(async (l) => l);
@@ -103,7 +104,7 @@ test('the last role cannot be deleted', async () => {
 test('deleting a role a card uses makes the card show Role missing', async () => {
   const board = live.board!;
   board.colab.lineup.agents = [{ model: 'm/x', roleId: 'foreman', settings: {} }];
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, connections: [], library: library(), passDefaults: { audit: '', prune: '' } });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, connections: [], library: library(), defaults: { shared: '', roles: [], prompts: D } });
   vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(ConnectionsPanel);
   await vi.advanceTimersByTimeAsync(0);
@@ -135,38 +136,69 @@ test('the picture checkbox saves pictures', async () => {
   expect(api.saveLibrary).toHaveBeenLastCalledWith({ rules: 'Be kind.', roles: library().roles });
 });
 
-test('Final audit shows the default text, editing saves passes.audit, and Reset removes it', async () => {
-  colabState.passDefaults = { audit: 'Default audit.', prune: 'Default prune.' };
+const P = { chat: 'Chat.', turn: 'Turn.', answer: 'Answer.', audit: 'Audit.', prune: 'Prune.' };
+const D = { chat: 'Default chat.', turn: 'Default turn.', answer: 'Default answer.', audit: 'Default audit.', prune: 'Default prune.' };
+
+test('Turn shows the stored text, and editing saves prompts.turn', async () => {
+  colabState.library = { ...library(), prompts: P };
   render(RoleEditor, { onclose: () => {} });
-  await open('Final audit');
-  const box = screen.getByLabelText('Instructions, every board') as HTMLTextAreaElement;
-  expect(box.value).toBe('Default audit.');
-  expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
-  await fireEvent.input(box, { target: { value: 'Check hard.' } });
+  await open('Turn');
+  const box = screen.getByRole('textbox') as HTMLTextAreaElement;
+  expect(box.value).toBe('Turn.');
+  await fireEvent.input(box, { target: { value: 'Play well.' } });
   await vi.advanceTimersByTimeAsync(600);
-  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: { audit: 'Check hard.' } });
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), prompts: { ...P, turn: 'Play well.' } });
+});
+
+test('Reset on a prompt puts back the default and is disabled when equal', async () => {
+  colabState.library = { ...library(), prompts: { ...P, answer: 'Mine.' } };
+  render(RoleEditor, { onclose: () => {} });
+  await open('Answer');
   await fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }));
   await vi.advanceTimersByTimeAsync(0);
-  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: {} });
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), prompts: { ...P, answer: 'Default answer.' } });
+  expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
 });
 
-test('Editing the text back to the default stores nothing', async () => {
-  colabState.passDefaults = { audit: 'Default audit.', prune: 'Default prune.' };
-  colabState.library = { ...library(), passes: { audit: 'Mine' } };
+test('Chat (Claude) edits the chat prompt', async () => {
+  colabState.library = { ...library(), prompts: P };
   render(RoleEditor, { onclose: () => {} });
-  await open('Final audit');
-  await fireEvent.input(screen.getByLabelText('Instructions, every board'), { target: { value: '  Default audit.\n' } });
-  await vi.advanceTimersByTimeAsync(600);
-  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: {} });
+  await open('Chat (Claude)');
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Chat.');
+  expect(screen.getByText(/What Claude is told when you chat with it/)).toBeInTheDocument();
 });
 
-test('the Prune pane keeps the audit text and names /prune', async () => {
-  colabState.passDefaults = { audit: 'A', prune: 'Default prune.' };
-  colabState.library = { ...library(), passes: { audit: 'Mine' } };
+test('Final audit and Prune still name their command', async () => {
+  colabState.library = { ...library(), prompts: P };
   render(RoleEditor, { onclose: () => {} });
   await open('Prune');
   expect(screen.getByText(/\/prune <text>/)).toBeInTheDocument();
-  await fireEvent.input(screen.getByLabelText('Instructions, every board'), { target: { value: 'Cut.' } });
+  await fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Cut.' } });
   await vi.advanceTimersByTimeAsync(600);
-  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), passes: { audit: 'Mine', prune: 'Cut.' } });
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), prompts: { ...P, prune: 'Cut.' } });
+});
+
+test('Reset on the Foreman puts back the default job; a role not in the defaults has none', async () => {
+  render(RoleEditor, { onclose: () => {} });
+  await open('Foreman');
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({
+    rules: 'Be kind.',
+    roles: [
+      { id: 'creative', name: 'Creative', job: 'Dream.' },
+      { id: 'foreman', name: 'Foreman', job: 'Default build.' },
+    ],
+  });
+  expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
+  await open('Creative');
+  expect(screen.queryByRole('button', { name: 'Reset to default' })).not.toBeInTheDocument();
+});
+
+test('Reset on Shared rules puts back the default rules', async () => {
+  render(RoleEditor, { onclose: () => {} });
+  await open('Shared rules');
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(api.saveLibrary).toHaveBeenLastCalledWith({ ...library(), rules: 'Default rules.' });
 });
