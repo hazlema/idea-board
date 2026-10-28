@@ -51,6 +51,7 @@ Files next to the board (for `plans/game.json`):
 |---|---|
 | `plans/game.json` | The board: brief, brainstorm, flowchart, ruled out, chat |
 | `plans/game.assets/` | Pictures you added (never deleted) |
+| `plans/game.files/` | Files you attached in the chat (never deleted) |
 | `plans/game.versions/` | Saved versions |
 | `plans/game.history.jsonl` | Change history |
 | `plans/game.design.md` | The exported design doc (overwritten on each export) |
@@ -154,12 +155,14 @@ What you type decides who answers:
 | `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
 | `/stop` | Ends the run after the current turn (same as **Stop**). Also drops a foreman's request that is waiting, or the rest of one under way. |
 | `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, plain bullets included, without touching accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |
-| `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. Read-only: it changes nothing on the board. Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
+| `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. It can fix what it finds (see Final audit below). Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
 | `//hello` | Sends `/hello` as plain text. |
 
 **Final audit.** At the end of a run the Foreman audits the board once (switch it off under **⋯ → Settings → Audit at the end of a run**), and `/audit` does the same on demand. Claude audits when its role is the Foreman; otherwise the first card with the Foreman role that can answer does; otherwise Claude through the `claude` command. If none of those is available, `/audit` is refused. The audit can fix the board as it goes (every change can be undone), make pictures if the Foreman's role can, and hand work on with `ask_agents`: you approve the request as usual, and its steps go out once the run and the audit are over; it runs in a fresh session and posts its report in the chat. Its instructions are the "Final audit" text under **Edit roles… → Prompts**, where the Prune text is also editable.
 
 **Foreman requests.** Outside a run, whoever holds the Foreman role can ask other agents for work (the `ask_agents` tool): a list of steps, each one agent and what to do. A box opens on the page with the whole list, and nothing is sent until you press **Yes, send it**. Then the steps go out in order, each after the agent before it has answered, as your message to that agent marked as the foreman's request. **No** just says so in the chat. Only one request at a time; `/start` waits until it is answered or done; **Stop** drops the rest. If a step's agent can't answer, the chain stops there with a note. During a run the foreman steers through the chat instead.
+
+**Attachments.** The 📎 button next to the chat box attaches a text file, such as a playtest log (10 MB at most; binary files are refused). It adds `📎 playtest-3.log` to what you are typing, so you can say what to look for and send it as usual. In the chat the name is a link that opens the file in a new tab. Every agent, Claude, the cards and the audit alike, reads attachments with the `read_attachment` tool: with a name it returns the file 500 lines at a time, and without one it lists every attached file. The same name twice is kept as `playtest-3-2.log`, so nothing is overwritten.
 
 Pruning is tuned under **⋯ → Settings → Pruning**: a mechanics limit (blank means no limit) and how aggressive the pass is (Gentle, Normal or Aggressive). New ideas get one pass before they can be cut, and cut mechanics go on the ruled-out list with a reason starting "cut by prune:". A pass's chat note gives each section's size before and after; if a section is still over its limit, it says so: raise Aggressiveness and run `/prune` again.
 
@@ -382,7 +385,7 @@ visit can't post to your board or set off a Claude run.
 ```bash
 npm install
 IDEA_BOARD_CLAUDE=/nonexistent node server.mjs --no-open   # the board server on 4777, no background Claude
-npm run dev                            # Vite dev server with hot reload; proxies /api, /assets and /mcp to 4777
+npm run dev                            # Vite dev server with hot reload; proxies /api, /assets, /files and /mcp to 4777
 ```
 
 Open the URL Vite prints. Pointing `IDEA_BOARD_CLAUDE` at a missing file keeps
