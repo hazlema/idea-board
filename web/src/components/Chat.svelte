@@ -3,6 +3,7 @@
   import { tick } from 'svelte';
   import { CHAT_FONT, chatPrefs } from '$lib/chatPrefs.svelte';
   import { chatHistory } from '$lib/chatHistory';
+  import { chatDraft } from '$lib/chatDraft.svelte';
   import { authorColor, authorName, cardIds, isAi } from '$lib/authors';
   import * as api from '$lib/api';
   import { live } from '$lib/live.svelte';
@@ -23,7 +24,6 @@
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);
 
-  let draft = $state('');
   let error = $state('');
   let log: HTMLDivElement | undefined = $state();
 
@@ -94,7 +94,7 @@
     return run?.claude === 'mcp' ? 'A Claude session is listening' : '';
   });
 
-  const showHint = $derived(draft.trimStart().startsWith('/'));
+  const showHint = $derived(chatDraft.text.trimStart().startsWith('/'));
 
   // Within this many px of the bottom counts as reading the newest.
   const AT_BOTTOM = 40;
@@ -119,17 +119,17 @@
   }
 
   async function submit(): Promise<void> {
-    const text = draft.trim();
+    const text = chatDraft.text.trim();
     if (!text || previewing) return;
     const context = contextFor(live.pointing);
     chatHistory.add(text);
-    draft = '';
+    chatDraft.text = '';
     error = '';
     let sent = await live.chat(text, context);
     // The server asks first (a /prune nothing needs): yes sends it again, confirmed; no keeps what was typed.
     if ('confirm' in sent) {
       if (!window.confirm(sent.confirm)) {
-        if (!draft) draft = text;
+        if (!chatDraft.text) chatDraft.text = text;
         return;
       }
       sent = await live.chat(text, context, true);
@@ -137,7 +137,7 @@
     // A refused or failed send keeps what was typed, unless the user has started something new.
     if ('error' in sent) {
       error = sent.error;
-      if (!draft) draft = text;
+      if (!chatDraft.text) chatDraft.text = text;
     }
   }
 
@@ -146,7 +146,7 @@
     const next = event.key === 'ArrowUp' ? chatHistory.older(box.value) : chatHistory.newer();
     if (next === null) return;
     event.preventDefault();
-    draft = next;
+    chatDraft.text = next;
     await tick();
     box.setSelectionRange(next.length, next.length);
   }
@@ -234,7 +234,7 @@
       </div>
     {/if}
     <textarea
-      bind:value={draft}
+      bind:value={chatDraft.text}
       oninput={() => {
         error = '';
         chatHistory.reset();

@@ -12,6 +12,7 @@ import * as api from '$lib/api';
 import { live } from '$lib/live.svelte';
 import Chat from './Chat.svelte';
 import { chatPrefs } from '$lib/chatPrefs.svelte';
+import { chatDraft } from '$lib/chatDraft.svelte';
 import { preview } from '../memory/preview.svelte';
 import type { VersionMeta } from '$lib/types';
 
@@ -23,6 +24,15 @@ beforeEach(() => {
   live.agent = 'idle';
   live.presence = false;
   preview.close();
+  chatDraft.text = '';
+});
+
+test('half-typed text survives the chat going away and coming back (switching tabs)', async () => {
+  const first = render(Chat);
+  await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: 'the pumpkin thief is' } });
+  first.unmount();
+  render(Chat);
+  expect((screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement).value).toBe('the pumpkin thief is');
 });
 
 async function typeAndSend(text: string) {
