@@ -376,6 +376,8 @@ function main() {
   const presence = new Presence(store);
   const mcpUrl = `http://${HOST}:${options.port}/mcp`;
   const library = new Library(libraryFile());
+  // On startup, whatever the user's library is missing is filled from defaults.json.
+  library.get();
   const openrouter = new OpenRouter({ key: () => readKey() });
   const pictures = new PictureMaker({ store, library, openrouter });
   const { agent, colab, room } = connect({ store, presence, library, openrouter, pictures, agent: { mcpUrl, cwd: path.dirname(store.file) } });

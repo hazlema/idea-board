@@ -127,10 +127,13 @@ test('the reply rule says the final reply is posted for the agent', () => {
   assert.match(REPLY_RULE, /no tool call/);
 });
 
-test('a blank prompt is refilled', () => {
+test('an emptied prompt stays empty; only a missing one is filled', () => {
   const lib = new Library(tmpFile());
-  const saved = lib.save({ ...defaultLibrary(), prompts: { ...defaults().prompts, turn: '  ' } });
+  const { turn: _turn, ...noTurn } = defaults().prompts;
+  const saved = lib.save({ ...defaultLibrary(), prompts: { ...noTurn, chat: '' } });
+  assert.equal(saved.prompts.chat, '');
   assert.equal(saved.prompts.turn, defaults().prompts.turn);
+  assert.equal(lib.get().prompts.chat, '');
 });
 
 test('save keeps prompts and checks them', () => {

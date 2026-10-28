@@ -25,11 +25,9 @@
 
   const saveText = async (value: string): Promise<boolean> => save({ ...colabState.library, prompts: { ...prompts(), [name]: value } });
 
-  // A prompt can't be blank: clearing the box saves nothing (Reset to default gives the default).
   const text = new Draft({
     server: () => stored,
     save: async (value) => ((await saveText(value)) ? {} : null),
-    valid: (value) => value.trim() !== '',
     delay: 500,
   });
 

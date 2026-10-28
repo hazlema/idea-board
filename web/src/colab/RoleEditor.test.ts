@@ -160,20 +160,6 @@ test('Reset on a prompt puts back the default and is disabled when equal', async
   expect(screen.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
 });
 
-test('clearing a prompt box saves nothing and shows the stored text again', async () => {
-  colabState.library = { ...library(), prompts: { ...P, turn: 'Mine turn.' } };
-  render(RoleEditor, { onclose: () => {} });
-  await open('Turn');
-  const box = screen.getByRole('textbox') as HTMLTextAreaElement;
-  await fireEvent.focus(box);
-  await fireEvent.input(box, { target: { value: '' } });
-  await fireEvent.blur(box);
-  await vi.advanceTimersByTimeAsync(600);
-  expect(api.saveLibrary).not.toHaveBeenCalled();
-  expect(box.value).toBe('Mine turn.');
-  expect(screen.getByRole('button', { name: 'Reset to default' })).not.toBeDisabled();
-});
-
 test('Chat (Claude) edits the chat prompt', async () => {
   colabState.library = { ...library(), prompts: P };
   render(RoleEditor, { onclose: () => {} });
