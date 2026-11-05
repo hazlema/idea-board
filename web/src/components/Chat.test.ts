@@ -168,7 +168,7 @@ test('typing / shows the command hint', async () => {
   render(Chat);
   expect(screen.queryByText(/Commands:/)).not.toBeInTheDocument();
   await fireEvent.input(screen.getByPlaceholderText(/message everyone/i), { target: { value: '/' } });
-  expect(screen.getByText('Commands: /chat N (or /c N) · /r · /start · /stop · /prune · /audit · Shift+↑ for earlier messages')).toBeInTheDocument();
+  expect(screen.getByText('Commands: /chat N (or /c N) · /r · /start · /stop · /prune · /audit · /design_wiki · Shift+↑ for earlier messages')).toBeInTheDocument();
 });
 
 test('a targeted message shows its target, and a start shows the run started', () => {
@@ -307,6 +307,17 @@ test('a final audit has a Stop button', async () => {
   render(Chat);
   expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   live.colab = null;
+});
+
+test('/design_wiki opens the wiki in a new tab and sends nothing', async () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null);
+  render(Chat);
+  const input = screen.getByPlaceholderText(/message everyone/i) as HTMLTextAreaElement;
+  await typeAndSend('/design_wiki');
+  expect(open).toHaveBeenCalledWith('/wiki', '_blank');
+  expect(api.op).not.toHaveBeenCalled();
+  expect(input.value).toBe('');
+  open.mockRestore();
 });
 
 const NOT_NEEDED = "Pruning isn't needed: every section is under its limit. Prune anyway?";

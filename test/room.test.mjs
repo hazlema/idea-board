@@ -293,6 +293,13 @@ test('a refused /audit throws an OpError and posts nothing', () => {
   assert.equal(a.store.board.chat.length, 0);
 });
 
+test('/design_wiki is opened by the page and never posted', () => {
+  const a = setup();
+  assert.throws(() => a.room.userChat({ text: '/design_wiki' }), /opens the design wiki in the page/);
+  assert.equal(a.store.board.chat.length, 0);
+  assert.deepEqual(a.calls.start, []);
+});
+
 test('/stop while an audit runs stops it', () => {
   const a = setup();
   a.colab.status = { state: 'idle', pruning: false, prunePending: false, auditing: true };

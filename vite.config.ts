@@ -28,7 +28,7 @@ export default defineConfig({
     // The server answers /assets/ with stored pictures, so the bundle lives elsewhere.
     assetsDir: 'static',
   },
-  server: { proxy: { '/api': proxy, '/assets': proxy, '/files': proxy, '/mcp': proxy } },
+  server: { proxy: { '/api': proxy, '/assets': proxy, '/files': proxy, '/wiki': proxy, '/mcp': proxy } },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],

@@ -21,6 +21,7 @@ import { OpenRouter, readKey } from './lib/colab/openrouter.mjs';
 import { ColabRun } from './lib/colab/run.mjs';
 import { Pruner } from './lib/prune.mjs';
 import { Room } from './lib/room.mjs';
+import { wikiPage } from './lib/wiki.mjs';
 
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -274,6 +275,13 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
         }
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache', 'content-length': bytes.length });
         return res.end(bytes);
+      }
+
+      // The design wiki, for the host to read (/design_wiki opens it).
+      if (url.pathname === '/wiki' && req.method === 'GET') {
+        const html = Buffer.from(wikiPage(store.wiki));
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', 'content-length': html.length });
+        return res.end(html);
       }
 
       if (url.pathname === '/api/assets/url' && req.method === 'POST') {

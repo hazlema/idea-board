@@ -21,7 +21,7 @@ export async function withServer(fn, { graceMs, distDir, colab, agent: agentFiel
     fs.mkdirSync(distDir);
     fs.writeFileSync(path.join(distDir, 'index.html'), '<!doctype html><title>Idea board</title>');
   }
-  const store = new BoardStore(path.join(dir, 'board.json'));
+  const store = new BoardStore(path.join(dir, 'board.json'), { wikiDir: path.join(dir, 'wiki') });
   const presence = new Presence(store, { graceMs: graceMs ?? 50 });
   const nudges = [];
   // A stand-in for the binary: its run turns say one line.

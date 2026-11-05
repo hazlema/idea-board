@@ -19,7 +19,7 @@
 
   const MAX_LABEL = 200;
   const PLACEHOLDER = 'Message everyone, or /chat N to ask one… (Enter to send, Shift+Enter for a new line)';
-  const COMMANDS_HINT = '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · Shift+↑ for earlier messages';
+  const COMMANDS_HINT = '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · /design_wiki · Shift+↑ for earlier messages';
 
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);
@@ -160,6 +160,11 @@
     chatHistory.add(text);
     chatDraft.text = '';
     error = '';
+    // Opens the design wiki in a new tab; nothing is posted.
+    if (/^\/design_wiki$/i.test(text)) {
+      window.open('/wiki', '_blank');
+      return;
+    }
     let sent = await live.chat(text, context);
     // The server asks first (a /prune nothing needs): yes sends it again, confirmed; no keeps what was typed.
     if ('confirm' in sent) {

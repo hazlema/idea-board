@@ -555,3 +555,14 @@ test("the server won't start with a broken defaults file", async () => {
   assert.ok(stderr.includes(broken), stderr);
   assert.match(stderr, /not valid JSON/);
 });
+
+test('every agent reads the design wiki, and /wiki shows it to the host', () => withServer(async ({ base, call, store }) => {
+  fs.mkdirSync(store.wiki.dir, { recursive: true });
+  fs.writeFileSync(path.join(store.wiki.dir, 'belonging.md'), '# Belonging\n\n> A home in the game.\n\nGuilds.\n');
+  assert.deepEqual(await call('read_wiki', {}), { pages: [{ name: 'belonging', title: 'Belonging', summary: 'A home in the game.' }] });
+  assert.match((await call('read_wiki', { name: 'belonging' })).text, /Guilds\./);
+  const res = await fetch(`${base}/wiki`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  assert.match(await res.text(), /<h2 id="belonging">Belonging<\/h2>/);
+}));
