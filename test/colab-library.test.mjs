@@ -45,8 +45,8 @@ test('an old library file is filled and keeps what it had', () => {
   const roles = [{ id: 'new-role', name: 'Art Director', job: 'Draw.', pictures: true }];
   fs.writeFileSync(file, JSON.stringify({ rules: 'Old.', roles, passes: { audit: 'Mine.' } }));
   const lib = new Library(file).get();
-  const { chat, turn, answer, prune } = defaults().prompts;
-  assert.deepEqual(lib, { rules: 'Old.', roles, prompts: { chat, turn, answer, audit: 'Mine.', prune } });
+  const { chat, turn, answer, prune, referee } = defaults().prompts;
+  assert.deepEqual(lib, { rules: 'Old.', roles, prompts: { chat, turn, answer, audit: 'Mine.', prune, referee } });
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), lib);
 });
 

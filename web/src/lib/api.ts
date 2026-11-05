@@ -1,4 +1,4 @@
-import type { BoardInfo, ConnectionInfo, Defaults, HistoryRow, Library, Model, Op, RunStatus, Skipped, VersionMeta, Board } from './types';
+import type { BoardInfo, ConnectionInfo, Defaults, HistoryRow, Library, Model, Op, Playtest, PlaytestSummary, RunStatus, Skipped, VersionMeta, Board } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -114,4 +114,25 @@ export async function stopColab(): Promise<RunStatus> {
 /** The host's Yes or No to the foreman's request. */
 export async function answerRequest(id: string, yes: boolean): Promise<void> {
   await post('/api/colab/request', { id, yes });
+}
+
+export async function playtests(): Promise<PlaytestSummary[]> {
+  return (await request<{ playtests: PlaytestSummary[] }>('/api/playtests')).playtests;
+}
+
+export async function playtest(id: string): Promise<Playtest> {
+  return (await request<{ playtest: Playtest }>(`/api/playtests/${encodeURIComponent(id)}`)).playtest;
+}
+
+/** Starts the host's own playtest; the referee's opening comes back with it. */
+export async function startPlaytest(): Promise<Playtest> {
+  return (await post<{ playtest: Playtest }>('/api/playtests')).playtest;
+}
+
+export async function playtestAct(action: string): Promise<Playtest> {
+  return (await post<{ playtest: Playtest }>('/api/playtests/act', { action })).playtest;
+}
+
+export async function endPlaytest(verdict: string): Promise<Playtest> {
+  return (await post<{ playtest: Playtest }>('/api/playtests/end', { verdict })).playtest;
 }

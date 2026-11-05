@@ -14,6 +14,7 @@ import { ASSET_NAME } from './lib/brainstorm.mjs';
 import { BoardStore } from './lib/store.mjs';
 import { createMcpHandler, createToolRunner, mcpInstructions, Presence, PRUNE_DENIED, TOOLS } from './lib/mcp.mjs';
 import { PictureMaker } from './lib/colab/pictures.mjs';
+import { Playtests } from './lib/playtest.mjs';
 import { Agent } from './lib/agent.mjs';
 import { Library, libraryFile } from './lib/colab/library.mjs';
 import { defaults } from './lib/defaults.mjs';
@@ -136,20 +137,20 @@ async function colabRoute(run, room, pathname, req, res) {
 }
 
 // `pictures` (a PictureMaker) backs generate_image; without one the tool says no image model is set.
-export function createServer({ store, agent, presence, colab, room, pictures = null, port, distDir = DIST_DIR }) {
+export function createServer({ store, agent, presence, colab, room, pictures = null, playtests = null, port, distDir = DIST_DIR }) {
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   // A session only sees generate_image while Claude's role can make pictures.
   // ask_agents only while Claude holds the Foreman role.
   const listTools = () => TOOLS.filter((t) => (t.name !== 'generate_image' || pictures?.canMake('claude')) && (t.name !== 'ask_agents' || store.board.colab.lineup.claudeRoleId === 'foreman'));
-  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, requests: room.requests, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools, instructions: () => mcpInstructions(presence.prompts().chat) });
+  const mcp = createMcpHandler(createToolRunner(store, presence, { pictures, playtests, requests: room.requests, onSpend: () => store.emit({ type: 'colab', status: colab.status }) }), { listTools, instructions: () => mcpInstructions(presence.prompts().chat) });
   // The prune pass's own calls (/mcp?prune=<token>): tagged with its token, without the tools
   // it may not use, and with no presence, so the pass never touches an attached session's chat.
   const pruneTools = TOOLS.filter((t) => !PRUNE_DENIED.has(t.name));
   const pruneMcp = (token) => createMcpHandler(createToolRunner(store, null, { prune: token }), { listTools: () => pruneTools });
 
   // The audit's calls (/mcp?audit=1): Claude's tools, less what an audit may not use.
-  const auditMcp = createMcpHandler(createToolRunner(store, null, { audit: true, pictures, requests: room.requests }), { listTools: () => listTools().filter((t) => !AUDIT_DENIED.has(t.name)) });
+  const auditMcp = createMcpHandler(createToolRunner(store, null, { audit: true, pictures, playtests, requests: room.requests }), { listTools: () => listTools().filter((t) => !AUDIT_DENIED.has(t.name)) });
 
   return http.createServer(async (req, res) => {
     // Only this machine, and only this page: block DNS rebinding and
@@ -277,6 +278,23 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
         return res.end(bytes);
       }
 
+      // Paper playtests: the Playtest tab lists and reads them, and the host plays their own game.
+      const playtestRoute = /^\/api\/playtests(?:\/([^/]+))?$/.exec(url.pathname);
+      if (playtestRoute && playtests) {
+        const [, part] = playtestRoute;
+        const onSpend = () => store.emit({ type: 'colab', status: colab.status });
+        try {
+          if (!part && req.method === 'GET') return sendJson(res, 200, { playtests: playtests.list() });
+          if (!part && req.method === 'POST') return sendJson(res, 200, { playtest: await playtests.start('user', { onSpend }) });
+          if (part === 'act' && req.method === 'POST') return sendJson(res, 200, { playtest: await playtests.act('user', (await readBody(req))?.action, { onSpend }) });
+          if (part === 'end' && req.method === 'POST') return sendJson(res, 200, { playtest: playtests.end('user', (await readBody(req))?.verdict) });
+          if (part && req.method === 'GET') return sendJson(res, 200, { playtest: playtests.get(part) });
+        } catch (error) {
+          if (error instanceof OpError) return sendJson(res, error.status ?? 400, { error: error.message });
+          throw error;
+        }
+      }
+
       // The design wiki, for the host to read (/design_wiki opens it).
       if (url.pathname === '/wiki' && req.method === 'GET') {
         const html = Buffer.from(wikiPage(store.wiki));
@@ -340,7 +358,7 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
 // Claude (connection 1), the agents' run and the chat room, wired together and
 // recovered after a restart. `agent` holds options for the Agent. `pictures` is the one
 // PictureMaker the binary, the cards and the MCP runner share.
-export function connect({ store, presence, library, openrouter, pictures, agent: agentOptions }) {
+export function connect({ store, presence, library, openrouter, pictures, playtests, agent: agentOptions }) {
   // The run reads Claude's state through the agent, which is made first (it needs the run to stay quiet during one).
   let colab = null;
   const agent = new Agent(store, presence, {
@@ -351,7 +369,7 @@ export function connect({ store, presence, library, openrouter, pictures, agent:
     quiet: () => colab.status.state !== 'idle',
   });
   const pruner = new Pruner({ store, agent, library });
-  colab = new ColabRun({ store, presence, claude: agent, library, openrouter, pictures, pruner });
+  colab = new ColabRun({ store, presence, claude: agent, library, openrouter, pictures, playtests, pruner });
   const room = new Room({ store, agent, presence, colab, library });
   // When a run ends, a user message the background agent held back is answered. Only the
   // run's own change to idle counts: a status re-sent while idle (the agent's work, a
@@ -412,10 +430,11 @@ function main() {
   library.get();
   const openrouter = new OpenRouter({ key: () => readKey() });
   const pictures = new PictureMaker({ store, library, openrouter });
-  const { agent, colab, room } = connect({ store, presence, library, openrouter, pictures, agent: { mcpUrl, cwd: path.dirname(store.file) } });
+  const playtests = new Playtests({ store, library, openrouter });
+  const { agent, colab, room } = connect({ store, presence, library, openrouter, pictures, playtests, agent: { mcpUrl, cwd: path.dirname(store.file) } });
   // Model display names for new roster entries; until it resolves they are id-based.
   void colab.prepare();
-  const server = createServer({ store, agent, presence, colab, room, pictures, port: options.port });
+  const server = createServer({ store, agent, presence, colab, room, pictures, playtests, port: options.port });
   server.on('error', (error) => {
     console.error(error.code === 'EADDRINUSE' ? `Port ${options.port} is in use. Try --port <other>.` : error.message);
     process.exit(1);

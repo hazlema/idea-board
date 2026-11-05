@@ -18,6 +18,7 @@
     { name: 'answer', label: 'Answer' },
     { name: 'audit', label: 'Final audit' },
     { name: 'prune', label: 'Prune' },
+    { name: 'referee', label: 'Playtest referee' },
   ];
 
   /** A role id, null for the shared rules, or prompt:<name>. */

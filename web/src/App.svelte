@@ -13,12 +13,13 @@
   import BriefView from './views/BriefView.svelte';
   import CollaborateView from './views/CollaborateView.svelte';
   import FlowchartView from './views/FlowchartView.svelte';
+  import PlaytestView from './views/PlaytestView.svelte';
 
   // The flowchart shows a card's or arrow's details on the right; then the Memory panel gives way.
-  // The Collaborate tab gives the chat the whole width.
+  // The Collaborate tab gives the chat the whole width, and the Playtest tab its log.
   let flowSelection = $state(false);
   const showMemory = $derived(
-    Boolean(live.board) && live.view !== 'collaborate' && (live.view !== 'flowchart' || Boolean(preview.current) || !flowSelection),
+    Boolean(live.board) && live.view !== 'collaborate' && live.view !== 'playtest' && (live.view !== 'flowchart' || Boolean(preview.current) || !flowSelection),
   );
 
   onMount(() => live.connect());
@@ -30,6 +31,8 @@
   <main class="flex min-h-0 flex-1">
     {#if live.board && live.view === 'collaborate'}
       <CollaborateView />
+    {:else if live.board && live.view === 'playtest'}
+      <PlaytestView />
     {:else if live.board && preview.current}
       <VersionPreview />
     {:else if live.board && live.view === 'brief'}

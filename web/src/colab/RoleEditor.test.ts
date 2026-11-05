@@ -136,8 +136,8 @@ test('the picture checkbox saves pictures', async () => {
   expect(api.saveLibrary).toHaveBeenLastCalledWith({ rules: 'Be kind.', roles: library().roles });
 });
 
-const P = { chat: 'Chat.', turn: 'Turn.', answer: 'Answer.', audit: 'Audit.', prune: 'Prune.' };
-const D = { chat: 'Default chat.', turn: 'Default turn.', answer: 'Default answer.', audit: 'Default audit.', prune: 'Default prune.' };
+const P = { chat: 'Chat.', turn: 'Turn.', answer: 'Answer.', audit: 'Audit.', prune: 'Prune.', referee: 'Referee.' };
+const D = { chat: 'Default chat.', turn: 'Default turn.', answer: 'Default answer.', audit: 'Default audit.', prune: 'Default prune.', referee: 'Default referee.' };
 
 test('Turn shows the stored text, and editing saves prompts.turn', async () => {
   colabState.library = { ...library(), prompts: P };

@@ -202,7 +202,7 @@ export interface RosterEntry {
 export interface Colab {
   roster: RosterEntry[];
   /** turnLimit: minutes an agent's turn may take before it is asked to wrap up. */
-  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; claudeModel: string; pruneLimit: number | null; pruneAggressiveness: 'gentle' | 'normal' | 'aggressive'; auditAtEnd?: boolean };
+  lineup: { agents: LineupAgent[]; rounds: number; budget: number; turnLimit: number; claudeRoleId: string; imageModel: string; refereeModel?: string; claudeModel: string; pruneLimit: number | null; pruneAggressiveness: 'gentle' | 'normal' | 'aggressive'; auditAtEnd?: boolean };
   extras: { rules: string; roles: Record<string, string> };
   run: null | { round: number; spent: number };
   /** Spend across all OpenRouter connections, until reset. */
@@ -224,6 +224,46 @@ export interface Prompts {
   answer: string;
   audit: string;
   prune: string;
+  referee: string;
+}
+
+/** One turn of a paper playtest; the opening has no action. */
+export interface PlaytestTurn {
+  at: string;
+  action: string | null;
+  happened: string;
+  /** What the rules didn't say; a turn with gaps left the state as it was. */
+  gaps: string[];
+  /** Numbers or details the referee made up this turn. */
+  assumed: string[];
+  rolls: number[];
+  rollsUsed: number[];
+}
+
+/** A game played against the referee, who knows only the board. */
+export interface Playtest {
+  id: string;
+  player: Author;
+  startedAt: string;
+  endedAt: string | null;
+  /** The rules ended the game (won or lost). */
+  over: boolean;
+  verdict: string;
+  state: string[];
+  /** Every number the referee assumed in this game. */
+  assumed: string[];
+  turns: PlaytestTurn[];
+}
+
+/** A playtest as the list shows it. */
+export interface PlaytestSummary {
+  id: string;
+  player: Author;
+  startedAt: string;
+  endedAt: string | null;
+  over: boolean;
+  actions: number;
+  gaps: number;
 }
 
 export interface Library {

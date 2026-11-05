@@ -1,5 +1,5 @@
 <script lang="ts">
-  // ⋯ → Settings: board settings that don't need to sit in the sidebar. The image model and pruning.
+  // ⋯ → Settings: board settings that don't need to sit in the sidebar. The image and referee models, and pruning.
   import { untrack } from 'svelte';
   import { live } from '$lib/live.svelte';
   import { colabState } from '../colab/colab.svelte';
@@ -16,6 +16,9 @@
 
   const lineup = $derived(live.board?.colab?.lineup);
   const imageModel = $derived(lineup?.imageModel || DEFAULT_IMAGE_MODEL);
+  // As DEFAULT_REFEREE_MODEL in lib/board.mjs.
+  const DEFAULT_REFEREE_MODEL = 'anthropic/claude-sonnet-5.5';
+  const refereeModel = $derived(lineup?.refereeModel || DEFAULT_REFEREE_MODEL);
   // The line-up can't change mid-run.
   const canEdit = $derived(!live.colab || live.colab.state === 'idle');
 
@@ -28,6 +31,11 @@
   function setImageModel(id: string): void {
     if (!lineup) return;
     void live.send({ type: 'setColabLineup', ...$state.snapshot(lineup), imageModel: id });
+  }
+
+  function setRefereeModel(id: string): void {
+    if (!lineup) return;
+    void live.send({ type: 'setColabLineup', ...$state.snapshot(lineup), refereeModel: id });
   }
 
   // Pruning: sent like the image model, with the rest of the line-up.
@@ -86,6 +94,22 @@
         {#if imageModel !== DEFAULT_IMAGE_MODEL}
           <button type="button" class="underline hover:text-text disabled:no-underline disabled:opacity-60" disabled={!canEdit} onclick={() => setImageModel(DEFAULT_IMAGE_MODEL)}
             >Use the default ({DEFAULT_IMAGE_MODEL})</button
+          >
+        {:else}
+          This is the default.
+        {/if}
+      </p>
+    </section>
+
+    <section class="flex flex-col gap-1 rounded-md border border-line bg-raised p-3">
+      <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Playtests</h3>
+      <span class="text-muted">Referee model</span>
+      <ModelPicker value={refereeModel} models={colabState.models} disabled={!canEdit} ariaLabel="Referee model" onchange={setRefereeModel} />
+      <p class="text-xs text-muted">
+        Rules on every playtest turn, knowing only the board; each ruling is paid from the OpenRouter budget.
+        {#if refereeModel !== DEFAULT_REFEREE_MODEL}
+          <button type="button" class="underline hover:text-text disabled:no-underline disabled:opacity-60" disabled={!canEdit} onclick={() => setRefereeModel(DEFAULT_REFEREE_MODEL)}
+            >Use the default ({DEFAULT_REFEREE_MODEL})</button
           >
         {:else}
           This is the default.

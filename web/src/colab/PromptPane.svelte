@@ -17,6 +17,7 @@
     answer: 'What an agent is told when it answers you.',
     audit: 'Shared by every board. Focus a single run with /audit <text>.',
     prune: 'Shared by every board. Focus a single run with /prune <text>.',
+    referee: 'What the referee of a playtest is told. It sees only the board, never the chat.',
   };
 
   const prompts = (): Prompts => colabState.library.prompts ?? colabState.defaults.prompts;

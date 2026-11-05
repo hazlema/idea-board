@@ -23,7 +23,7 @@ const idle = { state: 'idle', round: 0, rounds: 5, current: null, spent: 0, budg
 
 beforeEach(() => {
   vi.mocked(api.op).mockClear();
-  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '' } }, connections: [] });
+  vi.mocked(api.colab).mockResolvedValue({ status: idle, hasKey: true, library: { rules: '', roles: [] }, defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } }, connections: [] });
   vi.mocked(api.colabModels).mockResolvedValue([]);
   vi.mocked(api.colabImageModels).mockResolvedValue(imageModels);
   colabState.loaded = false;
@@ -37,7 +37,7 @@ beforeEach(() => {
 test('the image model is the default to start, and choosing another saves it with the rest of the line-up', async () => {
   render(SettingsDialog, { onclose: () => {} });
   await waitFor(() => expect(colabState.imageModels).not.toBeNull());
-  expect(screen.getByText(/This is the default\./)).toBeInTheDocument();
+  expect(screen.getAllByText(/This is the default\./)).toHaveLength(2);
   await fireEvent.focus(screen.getByLabelText('Image model'));
   await fireEvent.click(await screen.findByRole('button', { name: /Imagen 9/ }));
   expect(api.op).toHaveBeenCalledWith(
@@ -52,11 +52,25 @@ test('another model offers the way back to the default', async () => {
   expect(api.op).toHaveBeenCalledWith(expect.objectContaining({ type: 'setColabLineup', imageModel: 'openai/gpt-5.4-image-2' }));
 });
 
+test('the referee model saves with the line-up, and another one offers the way back', async () => {
+  vi.mocked(api.colabModels).mockResolvedValue([{ id: 'acme/judge', name: 'Acme: Judge', promptPrice: 1, completionPrice: 2, context: 1000 }]);
+  colabState.models = null;
+  render(SettingsDialog, { onclose: () => {} });
+  await waitFor(() => expect(colabState.models).not.toBeNull());
+  await fireEvent.focus(screen.getByLabelText('Referee model'));
+  await fireEvent.click(await screen.findByRole('button', { name: /Judge/ }));
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'setColabLineup', refereeModel: 'acme/judge', imageModel: 'openai/gpt-5.4-image-2' }));
+  live.board = { ...live.board!, colab: { ...live.board!.colab, lineup: { ...live.board!.colab.lineup, refereeModel: 'acme/judge' } } };
+  await fireEvent.click(await screen.findByRole('button', { name: 'Use the default (anthropic/claude-sonnet-5.5)' }));
+  expect(api.op).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'setColabLineup', refereeModel: 'anthropic/claude-sonnet-5.5' }));
+});
+
 test('it is locked while agents run, and Escape closes it', async () => {
   live.colab = { ...idle, state: 'running' } as RunStatus;
   const onclose = vi.fn();
   render(SettingsDialog, { onclose });
   expect(screen.getByLabelText('Image model')).toBeDisabled();
+  expect(screen.getByLabelText('Referee model')).toBeDisabled();
   expect(screen.getAllByText('Agents are running; change these when they stop.')).toHaveLength(1);
   expect(screen.getByLabelText('Mechanics limit')).toBeDisabled();
   await fireEvent.keyDown(screen.getByRole('dialog', { name: 'Settings' }), { key: 'Escape' });

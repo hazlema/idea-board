@@ -7,6 +7,7 @@
     { view: 'brief', label: 'Brief' },
     { view: 'brainstorm', label: 'Brainstorm' },
     { view: 'flowchart', label: 'Flowchart' },
+    { view: 'playtest', label: 'Playtest' },
     { view: 'collaborate', label: 'Collaborate' },
   ];
 

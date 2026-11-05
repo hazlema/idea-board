@@ -67,7 +67,7 @@ The top bar shows "All changes saved". If a save fails (the server stopped,
 say), what you typed stays on screen, the top bar says "Not saved", and it is
 tried again every few seconds until it goes through.
 
-Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**, **Collaborate**.
+Tabs along the top: **Brief**, **Brainstorm**, **Flowchart**, **Playtest**, **Collaborate**.
 The side panel shows **Memory** (tabs **Ruled out** and **History**); on
 Flowchart, selecting a card shows its details there instead.
 
@@ -108,6 +108,31 @@ below). There's no need to start a run just to get one change made. For example:
 > Before every game there should be an instructions page, leaning heavily on the
 > Halloween aesthetic. Maybe it's a full-screen page with a button that begins the
 > game. Please delegate using ask_agents.
+
+### Playtest
+
+Paper playtests: play the game as the board has it, against a referee who knows
+only the board (the Brief, the Brainstorm and the accepted Flowchart), never the
+chat. If it knew what the team meant, it would fill the gaps without saying so.
+You say what you do in plain words; the referee says what happens and keeps the
+game's state. When the rules don't say what happens, the move doesn't happen and
+the gap is marked in amber: that is a rule the board is missing. When it needs a
+number the board leaves out, it makes one up and lists it under the numbers it
+assumed. The server rolls the dice (1–100) the referee must use for chance.
+
+The list on the left shows every playtest, the agents' and yours, with how many
+moves and gaps each had; an agent's game updates live as it plays. **New
+playtest** starts your own. Type a move under the log, and end the game with a
+verdict. Every agent has the same tools (`playtest_start`, `playtest_act`,
+`playtest_end`, and `read_playtest` to read anyone's), and the default QA role is
+told to playtest rather than imagine. Nothing is posted in the chat.
+
+The referee is one OpenRouter call per move with the **Referee model** in
+**⋯ → Settings…** (a new board uses `anthropic/claude-sonnet-5.5`, since it has to
+be strict). Each ruling is paid from the budget: on a large board, about $0.08 with
+Sonnet. A player has one open game at a time, of 20 moves at most. What the
+referee is told is the **Playtest referee** prompt in the Roles box. Playtests are
+kept in `<board>.playtests/` beside the board, outside its history and undo.
 
 ### Collaborate
 

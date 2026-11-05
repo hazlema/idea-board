@@ -1,9 +1,9 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import * as api from './api';
 import { isAi } from './authors';
-import type { AgentState, Author, Board, Op, Pointer, RunStatus } from './types';
+import type { AgentState, Author, Board, Op, Playtest, Pointer, RunStatus } from './types';
 
-export type View = 'brief' | 'brainstorm' | 'flowchart' | 'collaborate';
+export type View = 'brief' | 'brainstorm' | 'flowchart' | 'playtest' | 'collaborate';
 export interface Notice {
   at: string;
   text: string;
@@ -14,7 +14,7 @@ export interface Toast {
 }
 
 const VIEW_KEY = 'idea-board-tab';
-const VIEWS: View[] = ['brief', 'brainstorm', 'flowchart', 'collaborate'];
+const VIEWS: View[] = ['brief', 'brainstorm', 'flowchart', 'playtest', 'collaborate'];
 const FLASH_MS = 1600;
 const TOAST_MS = 6000;
 /** How often fields whose save failed try again. */
@@ -26,7 +26,8 @@ type ServerEvent =
   | { type: 'presence'; attached: boolean }
   | { type: 'history' }
   | { type: 'versions' }
-  | { type: 'colab'; status: RunStatus };
+  | { type: 'colab'; status: RunStatus }
+  | { type: 'playtest'; playtest: Playtest };
 
 function savedView(): View {
   try {
@@ -58,6 +59,8 @@ class Live {
   historyTick = $state(0);
   /** Bumped when a saved version is added, so the versions list reloads. */
   versionsTick = $state(0);
+  /** The playtest that changed last (a turn played, a game started or ended), for the Playtest tab. */
+  playtest = $state<Playtest | null>(null);
 
   #view = $state<View>(savedView());
   #flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -194,6 +197,9 @@ class Live {
         break;
       case 'colab':
         this.colab = event.status;
+        break;
+      case 'playtest':
+        this.playtest = event.playtest;
         break;
     }
   }
