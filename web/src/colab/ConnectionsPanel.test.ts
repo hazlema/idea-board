@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.mocked(api.colab).mockResolvedValue({
     status: idle,
     hasKey: true,
-    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } },
+    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '', pitch: '' } },
     library,
     connections: [],
   });
@@ -192,7 +192,7 @@ test('while running the inputs are locked and the current card is marked', async
   vi.mocked(api.colab).mockResolvedValue({
     status: running,
     hasKey: true,
-    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } },
+    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '', pitch: '' } },
     library,
     connections: [],
   });
@@ -351,7 +351,7 @@ test('a card shows its activity, in its colour, and the current card is marked',
       },
     },
   };
-  vi.mocked(api.colab).mockResolvedValue({ status: running, hasKey: true, library, defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } }, connections: [] });
+  vi.mocked(api.colab).mockResolvedValue({ status: running, hasKey: true, library, defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '', pitch: '' } }, connections: [] });
   live.colab = running;
   render(ConnectionsPanel);
   await waitFor(() => expect(colabState.models).not.toBeNull());
@@ -456,7 +456,7 @@ test("a line-up with no Claude role falls back to the Foreman, as the server doe
   vi.mocked(api.colab).mockResolvedValue({
     status: idle,
     hasKey: true,
-    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } },
+    defaults: { shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '', pitch: '' } },
     library: { rules: '', roles: [...library.roles, { id: 'foreman', name: 'Foreman', job: '' }] },
     connections: [],
   });

@@ -12,6 +12,7 @@ import { agentId } from '../lib/authors.mjs';
 import { PictureMaker } from '../lib/colab/pictures.mjs';
 import { PRUNE_REGROW, SECTIONS, Pruner } from '../lib/prune.mjs';
 import { AUDIT_DENIED, AUDIT_FRAME } from '../lib/audit.mjs';
+import { PITCH_FRAME } from '../lib/pitch.mjs';
 
 const A = { model: 'acme/alpha-one', roleId: 'creative' };
 const B = { model: 'acme/beta-two', roleId: 'qa' };
@@ -1301,7 +1302,7 @@ test('audit is refused during a run, while one is going, and with no auditor', a
   assert.deepEqual(run.audit({}), { error: 'Wait for the run to stop.' });
   await run.finished;
   assert.deepEqual(run.audit({}), { ok: true, by: 'Claude' });
-  assert.deepEqual(run.audit({}), { error: 'An audit is already going.' });
+  assert.deepEqual(run.audit({}), { error: 'An audit or pitch is already going.' });
   assert.equal(run.startError(), 'Wait for the audit to finish.');
   going.open();
   await run.settled();
@@ -1394,4 +1395,71 @@ test('cutAnswer cuts a card answer under way', async () => {
   run.cutAnswer(ID_A);
   await run.settled();
   assert.equal(chatPosts(store).at(-1).text, '(stopped partway through my turn)');
+});
+
+test('/pitch by Claude runs a fresh session with the pitch prompts', async () => {
+  const claude = auditingClaude(async () => ({ ok: true, text: 'Added 20 pitches.' }));
+  const { store, run } = setup({ agents: [], claude });
+  assert.deepEqual(run.pitch({ count: 20, guidance: 'funnier' }), { ok: true, by: 'Claude' });
+  await run.settled();
+  assert.equal(claude.calls.length, 1);
+  assert.match(claude.calls[0].p, /20 pitches/);
+  assert.match(claude.calls[0].p, /funnier/);
+  assert.ok(claude.calls[0].o.systemPrompt.startsWith(PITCH_FRAME));
+  assert.deepEqual([store.board.chat.at(-1).role, store.board.chat.at(-1).text], ['claude', 'Added 20 pitches.']);
+  assert.equal(run.status.auditing, false);
+});
+
+test('/pitch prefers the first card that can answer, in a fresh conversation', async () => {
+  const claude = auditingClaude();
+  const { store, run, calls } = setup({ agents: [A], claude, complete: () => text('Added 5 pitches.') });
+  const name = store.board.colab.roster.find((r) => r.id === ID_A)?.name;
+  const result = run.pitch({ count: 5 });
+  assert.equal(result.ok, true);
+  await run.settled();
+  assert.equal(claude.calls.length, 0);
+  assert.equal(result.by, store.board.colab.roster.find((r) => r.id === ID_A).name);
+  assert.ok(name === undefined || name === result.by);
+  assert.ok(calls[0].messages[0].content.startsWith(PITCH_FRAME));
+  assert.match(calls[0].messages[1].content, /5 pitches/);
+  const offered = calls[0].tools.map((t) => t.function.name);
+  for (const denied of AUDIT_DENIED) assert.ok(!offered.includes(denied), denied);
+  assert.equal(run.conversations.has(ID_A), false);
+  assert.deepEqual([store.board.chat.at(-1).role, store.board.chat.at(-1).text], [ID_A, 'Added 5 pitches.']);
+});
+
+test('/pitch is refused during a run and while an audit or pitch is going', async () => {
+  const going = setup({ agents: [A], complete: hang });
+  kickoff(going.store, going.run);
+  assert.deepEqual(going.run.pitch({ count: 5 }), { error: 'Wait for the run to end, then /pitch.' });
+  going.run.stop();
+  await going.run.finished;
+  const open = gate();
+  const claude = auditingClaude(async () => { await open.promise; return { ok: true, text: 'done' }; });
+  const { run } = setup({ agents: [], claude });
+  assert.equal(run.pitch({ count: 5 }).ok, true);
+  assert.deepEqual(run.pitch({ count: 5 }), { error: 'An audit or pitch is already going.' });
+  assert.deepEqual(run.audit({}), { error: 'An audit or pitch is already going.' });
+  open.open();
+  await run.settled();
+});
+
+test('/pitch with no one to pitch says so', () => {
+  const { run } = setup({ agents: [] });
+  assert.deepEqual(run.pitch({ count: 5 }), { error: 'No one can pitch: connect an agent, or install the claude command.' });
+});
+
+test('Stop cuts a pitch short', async () => {
+  let run;
+  const claude = auditingClaude((p, o) => new Promise((resolve) => {
+    o.signal.addEventListener('abort', () => resolve({ ok: false, error: 'aborted' }));
+    assert.equal(run.status.auditing, true);
+    run.stop();
+  }));
+  const made = setup({ agents: [], claude });
+  run = made.run;
+  run.pitch({ count: 5 });
+  await run.settled();
+  assert.equal(made.store.board.chat.at(-1).text, '(stopped partway through my turn)');
+  assert.equal(run.status.auditing, false);
 });

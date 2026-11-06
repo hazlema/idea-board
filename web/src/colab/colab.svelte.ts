@@ -7,7 +7,7 @@ import type { Defaults, Library, Model } from '$lib/types';
 class ColabState {
   library = $state<Library>({ rules: '', roles: [] });
   /** The shipped starting texts, for Reset to default. */
-  defaults = $state<Defaults>({ shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '' } });
+  defaults = $state<Defaults>({ shared: '', roles: [], prompts: { chat: '', turn: '', answer: '', audit: '', prune: '', referee: '', pitch: '' } });
   /** The models agents can use, or null until loaded (or when loading failed). */
   models = $state<Model[] | null>(null);
   /** The models that make pictures; null until loaded (or when loading failed). */

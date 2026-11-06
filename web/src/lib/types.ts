@@ -227,6 +227,7 @@ export interface Prompts {
   audit: string;
   prune: string;
   referee: string;
+  pitch: string;
 }
 
 /** One turn of a paper playtest; the opening has no action. */

@@ -18,6 +18,7 @@
     audit: 'Shared by every board. Focus a single run with /audit <text>.',
     prune: 'Shared by every board. Focus a single run with /prune <text>.',
     referee: 'What the referee of a playtest is told. It sees only the board, never the chat.',
+    pitch: 'Shared by every board. What /pitch asks for: twists, each a toy and where it lives.',
   };
 
   const prompts = (): Prompts => colabState.library.prompts ?? colabState.defaults.prompts;

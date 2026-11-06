@@ -14,6 +14,7 @@ const GOOD = {
   audit: 'Audit.',
   prune: 'Prune.',
   referee: 'Referee.',
+  pitch: 'Pitch.',
 };
 
 const fixture = (content) => {
@@ -35,7 +36,7 @@ test('a fixture becomes shared, roles with ids, and prompts', () => {
   assert.deepEqual(d, {
     shared: 'Be good.',
     roles: [{ id: 'foreman', name: 'Foreman', job: 'Run it.' }, { id: 'qa', name: 'QA & Playtester', job: 'Test it.' }],
-    prompts: { chat: 'Chat.', turn: 'Turn.', answer: 'Answer.', audit: 'Audit.', prune: 'Prune.', referee: 'Referee.' },
+    prompts: { chat: 'Chat.', turn: 'Turn.', answer: 'Answer.', audit: 'Audit.', prune: 'Prune.', referee: 'Referee.', pitch: 'Pitch.' },
   });
 });
 

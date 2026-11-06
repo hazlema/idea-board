@@ -100,6 +100,14 @@ ideas).**
 3. In your `/start` command, tell the agents you seeded the board and that they
    have to fill it in.
 
+**Pitching twists: let an agent pitch, you pick.** After a first `/start` has
+built the Brief and Flowchart, `/pitch 20` has one agent add twenty twist
+pitches to a **Pitches** group on the Brainstorm, each labelled `toy : where it
+lives` (a dealer calls it out, a slot machine's dials, the lights failing…).
+Remove the checkbox on the ones you keep: that locks them, and no agent can
+change them. Ask for more any time (`/pitch 10 more like the heckler one`), or
+write your own; then `/start` again to build the game around what you locked.
+
 **Feature building: hand the foreman a feature.** With no run going, ask the
 foreman to implement a new feature and he delegates it: he splits it into steps
 for the right agents and asks you to approve the list (see Foreman requests
@@ -179,8 +187,9 @@ What you type decides who answers:
 | `/r And the doorstep?` | Like IRC: goes to whoever your last `/chat` went to, so you don't retype `/chat 2`. |
 | `/start ok, let's build out the classes` | Starts a run: everyone takes turns in sidebar order, reading each other's work and building on the board, until the rounds are used up, the budget is reached or you stop it. The text is the kickoff. |
 | `/stop` | Ends the run after the current turn (same as **Stop**). Also drops a foreman's request that is waiting, or the rest of one under way. |
-| `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, plain bullets included, without touching accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |
+| `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, the agents' plain bullets included, without touching your locked bullets, accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |
 | `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. It can fix what it finds (see Final audit below). Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
+| `/pitch` (or `/pitch 20`, `/pitch 10 <guidance>`) | One agent adds twist pitches (5 unless you give a number, up to 50) to the Pitches group, each `toy : where it lives`, spread across where a twist can come from: a person, a machine, chance the player can see, the setting, or the player's own action. It only adds entries. The first card that can answer pitches, else Claude through the `claude` command. Refused while a run or an audit is going. Its instructions are the "Pitch" text under **Edit roles… → Prompts**. |
 | `/design_wiki` | Opens the design wiki in a new tab: the game design reference every agent reads (see Design wiki below). Nothing is sent. |
 | `//hello` | Sends `/hello` as plain text. |
 
@@ -277,7 +286,8 @@ before every change and records decisions you settle.
 A pannable, zoomable dotted canvas. Add things from the palette on the left:
 
 - **Group:** a titled box of entries. Each entry has a bold label and
-  multi-line text. A plain bullet is a note or fact; add a checkbox from the
+  multi-line text. A plain bullet is a note or fact; one you add or make plain
+  yourself is **locked**: no agent can change, move or remove it. Add a checkbox from the
   entry menu to make it a decision: **ticked = agreed**, **unticked =
   undecided**. Click **+ add item** to add entries (type `:` or press Enter after the label
   to move on to its text); drag the handle to
