@@ -55,11 +55,11 @@ test('/audit takes optional focus text', () => {
   assert.deepEqual(parseCommand('/audit'), { kind: 'audit', text: '' });
 });
 
-test('/pitch takes an optional count and guidance', () => {
-  assert.deepEqual(parseCommand('/pitch'), { kind: 'pitch', count: 5, text: '' });
+test('/pitch takes an optional count and what to pitch', () => {
+  assert.deepEqual(parseCommand('/pitch'), { kind: 'pitch', count: null, text: '' });
   assert.deepEqual(parseCommand('/pitch 20'), { kind: 'pitch', count: 20, text: '' });
-  assert.deepEqual(parseCommand('/pitch 10 more like the heckler'), { kind: 'pitch', count: 10, text: 'more like the heckler' });
-  assert.deepEqual(parseCommand('/pitch more like the heckler'), { kind: 'pitch', count: 5, text: 'more like the heckler' });
+  assert.deepEqual(parseCommand('/pitch 5 Raccoon Skills'), { kind: 'pitch', count: 5, text: 'Raccoon Skills' });
+  assert.deepEqual(parseCommand('/pitch Raccoon Skills'), { kind: 'pitch', count: null, text: 'Raccoon Skills' });
 });
 
 test('/pitch refuses a count out of range', () => {

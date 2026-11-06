@@ -1400,11 +1400,11 @@ test('cutAnswer cuts a card answer under way', async () => {
 test('/pitch by Claude runs a fresh session with the pitch prompts', async () => {
   const claude = auditingClaude(async () => ({ ok: true, text: 'Added 20 pitches.' }));
   const { store, run } = setup({ agents: [], claude });
-  assert.deepEqual(run.pitch({ count: 20, guidance: 'funnier' }), { ok: true, by: 'Claude' });
+  assert.deepEqual(run.pitch({ count: 20, group: 'Raccoon Skills' }), { ok: true, by: 'Claude' });
   await run.settled();
   assert.equal(claude.calls.length, 1);
   assert.match(claude.calls[0].p, /20 pitches/);
-  assert.match(claude.calls[0].p, /funnier/);
+  assert.match(claude.calls[0].p, /group titled "Raccoon Skills"/);
   assert.ok(claude.calls[0].o.systemPrompt.startsWith(PITCH_FRAME));
   assert.deepEqual([store.board.chat.at(-1).role, store.board.chat.at(-1).text], ['claude', 'Added 20 pitches.']);
   assert.equal(run.status.auditing, false);

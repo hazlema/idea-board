@@ -3,13 +3,11 @@ import assert from 'node:assert/strict';
 import { PITCH_FRAME, pitchPrompt, pitchSystemPrompt } from '../lib/pitch.mjs';
 import { defaults } from '../lib/defaults.mjs';
 
-test('pitchPrompt asks for the count, names the group and the format, and carries guidance', () => {
-  const p = pitchPrompt({ count: 20, guidance: 'funnier' });
+test('pitchPrompt asks for the count into the named group, in the format', () => {
+  const p = pitchPrompt({ count: 20, group: 'Raccoon Skills' });
   assert.match(p, /20 pitches/);
-  assert.match(p, /"Pitches"/);
+  assert.match(p, /group titled "Raccoon Skills"/);
   assert.match(p, /toy : where it lives/);
-  assert.match(p, /funnier/);
-  assert.doesNotMatch(pitchPrompt({ count: 5 }), /guidance/);
   assert.match(pitchPrompt({ count: 5, snapshot: '{"b":1}' }), /\{"b":1\}/);
 });
 

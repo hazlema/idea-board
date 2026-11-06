@@ -12,7 +12,7 @@
   let { onclose }: Props = $props();
 
   // As DEFAULT_IMAGE_MODEL in lib/board.mjs: what a board starts with.
-  const DEFAULT_IMAGE_MODEL = 'openai/gpt-5.4-image-2';
+  const DEFAULT_IMAGE_MODEL = 'openai/gpt-image-2.6-flare';
 
   const lineup = $derived(live.board?.colab?.lineup);
   const imageModel = $derived(lineup?.imageModel || DEFAULT_IMAGE_MODEL);

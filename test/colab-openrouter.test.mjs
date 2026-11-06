@@ -153,10 +153,13 @@ test('imageModels lists image-output models without requiring tools, sharing one
     // A router picks a model for you and has no fixed price; it is not offered for pictures.
     { id: 'openrouter/auto', architecture: { output_modalities: ['text', 'image'] }, pricing: { prompt: '-1', completion: '-1' } },
   ];
-  const client = new OpenRouter({ fetch: async () => (calls++, json({ data })) });
+  let url;
+  const client = new OpenRouter({ fetch: async (u) => (calls++, url = u, json({ data })) });
   assert.deepEqual((await client.imageModels()).map((m) => m.id), ['a/paint']);
   assert.deepEqual((await client.models()).map((m) => m.id), ['b/text']);
   assert.equal(calls, 1);
+  // The plain list leaves out image-only models (gpt-image-*); every modality must be asked for.
+  assert.equal(url, 'https://openrouter.ai/api/v1/models?output_modalities=all');
 });
 
 test('image decodes a data URL and returns the cost', async () => {
@@ -176,19 +179,31 @@ test('image without a picture throws with the cost', async () => {
   await assert.rejects(client.image({ model: 'a/paint', prompt: 'x' }), (e) => e instanceof OpenRouterError && /returned no picture/.test(e.message) && e.cost === 0.01);
 });
 
-test('image sends only image to an image-only model, and both when the model can write text or is unknown', async () => {
-  const reply = json({ choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${PNG_1x1_BASE64}` } }] } }], usage: { cost: 0 } });
+test('an image-only model goes through the Images API; one that can write text, or is unknown, through chat', async () => {
+  const chatReply = json({ choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${PNG_1x1_BASE64}` } }] } }], usage: { cost: 0.01 } });
+  const imagesReply = json({ data: [{ b64_json: PNG_1x1_BASE64, media_type: 'image/png' }], usage: { cost: 0.05 } });
   const sent = [];
   const data = [
     { id: 'a/only', architecture: { output_modalities: ['image'] } },
     { id: 'a/both', architecture: { output_modalities: ['image', 'text'] } },
   ];
   const fetch = async (url, init) => {
-    if (url.endsWith('/models')) return json({ data });
-    sent.push(JSON.parse(init.body).modalities);
-    return reply;
+    if (url.includes('/models?')) return json({ data });
+    sent.push({ path: url.replace('https://openrouter.ai/api/v1', ''), body: JSON.parse(init.body) });
+    return url.endsWith('/images') ? imagesReply : chatReply;
   };
   const client = new OpenRouter({ key: 'k', fetch });
-  for (const model of ['a/only', 'a/both', 'a/unknown']) await client.image({ model, prompt: 'x' });
-  assert.deepEqual(sent, [['image'], ['image', 'text'], ['image', 'text']]);
+  const only = await client.image({ model: 'a/only', prompt: 'x' });
+  assert.equal(only.cost, 0.05);
+  assert.equal(only.data.toString('base64'), PNG_1x1_BASE64);
+  for (const model of ['a/both', 'a/unknown']) await client.image({ model, prompt: 'x' });
+  assert.deepEqual(sent.map((s) => s.path), ['/images', '/chat/completions', '/chat/completions']);
+  assert.deepEqual(sent[0].body, { model: 'a/only', prompt: 'x', n: 1 });
+  assert.deepEqual(sent.slice(1).map((s) => s.body.modalities), [['image', 'text'], ['image', 'text']]);
+});
+
+test('the Images API returning no picture throws with the cost', async () => {
+  const fetch = async (url) => (url.includes('/models?') ? json({ data: [{ id: 'a/only', architecture: { output_modalities: ['image'] } }] }) : json({ data: [], usage: { cost: 0.02 } }));
+  const client = new OpenRouter({ key: 'k', fetch });
+  await assert.rejects(client.image({ model: 'a/only', prompt: 'x' }), (e) => e instanceof OpenRouterError && e.message === 'The image model returned no picture.' && e.cost === 0.02);
 });

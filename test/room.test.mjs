@@ -294,23 +294,36 @@ test('a refused /audit throws an OpError and posts nothing', () => {
   assert.equal(a.store.board.chat.length, 0);
 });
 
-test('/pitch starts a pass and posts the request, owing nothing', () => {
+test('/pitch starts a pass into the group it names and posts the request, owing nothing', () => {
   const a = setup();
-  a.room.userChat({ text: '/pitch 20 funnier' });
-  assert.deepEqual(a.calls.pitch, [{ count: 20, guidance: 'funnier' }]);
-  assert.equal(a.store.board.chat.at(-1).text, 'Pitch 20 twists: funnier');
-  assert.equal(a.store.board.chat.at(-1).role, 'user');
-  assert.deepEqual(a.store.board.chat.at(-1).owed, []);
+  a.room.userChat({ text: '/pitch 5 Raccoon Skills' });
+  assert.deepEqual(a.calls.pitch, [{ count: 5, group: 'Raccoon Skills' }]);
+  const last = a.store.board.chat.at(-1);
+  assert.equal(last.text, 'Pitch 5 into "Raccoon Skills".');
+  assert.equal(last.role, 'user');
+  assert.deepEqual(last.owed, []);
+  assert.deepEqual(last.pitch, { count: 5, group: 'Raccoon Skills' });
   const b = setup();
-  b.room.userChat({ text: '/pitch' });
-  assert.deepEqual(b.calls.pitch, [{ count: 5, guidance: '' }]);
-  assert.equal(b.store.board.chat.at(-1).text, 'Pitch 5 twists.');
+  b.room.userChat({ text: '/pitch 20' });
+  b.room.userChat({ text: '/pitch Enemies' });
+  assert.deepEqual(b.calls.pitch, [{ count: 20, group: 'Pitches' }, { count: 5, group: 'Enemies' }]);
+});
+
+test('/pitch on its own reruns the last pitch, and says so when there is none', () => {
+  const a = setup();
+  assert.throws(() => a.room.userChat({ text: '/pitch' }), (e) => e instanceof OpError && e.message === 'Sorry, there is no last pitch.');
+  assert.equal(a.store.board.chat.length, 0);
+  a.room.userChat({ text: '/pitch 7 Raccoon Powerups' });
+  a.store.apply({ type: 'chat', text: 'something else', owed: [] }, 'user');
+  a.room.userChat({ text: '/pitch' });
+  assert.deepEqual(a.calls.pitch.at(-1), { count: 7, group: 'Raccoon Powerups' });
+  assert.equal(a.store.board.chat.at(-1).text, 'Pitch 7 into "Raccoon Powerups".');
 });
 
 test('a refused /pitch throws an OpError and posts nothing', () => {
   const a = setup();
   a.calls.pitchResult = { error: 'Wait for the run to end, then /pitch.' };
-  assert.throws(() => a.room.userChat({ text: '/pitch' }), (e) => e instanceof OpError && /Wait for the run to end/.test(e.message));
+  assert.throws(() => a.room.userChat({ text: '/pitch 5' }), (e) => e instanceof OpError && /Wait for the run to end/.test(e.message));
   assert.equal(a.store.board.chat.length, 0);
 });
 

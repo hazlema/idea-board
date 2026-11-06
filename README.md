@@ -102,10 +102,11 @@ ideas).**
 
 **Pitching twists: let an agent pitch, you pick.** After a first `/start` has
 built the Brief and Flowchart, `/pitch 20` has one agent add twenty twist
-pitches to a **Pitches** group on the Brainstorm, each labelled `toy : where it
+pitches to a **Pitches** group on the Brainstorm, or `/pitch 5 Raccoon Skills` adds
+five to a group of that name, each labelled `toy : where it
 lives` (a dealer calls it out, a slot machine's dials, the lights failing…).
 Remove the checkbox on the ones you keep: that locks them, and no agent can
-change them. Ask for more any time (`/pitch 10 more like the heckler one`), or
+change them. `/pitch` on its own reruns the last pitch. Ask for more any time, or
 write your own; then `/start` again to build the game around what you locked.
 
 **Feature building: hand the foreman a feature.** With no run going, ask the
@@ -189,7 +190,7 @@ What you type decides who answers:
 | `/stop` | Ends the run after the current turn (same as **Stop**). Also drops a foreman's request that is waiting, or the rest of one under way. |
 | `/prune` (or `/prune <what to focus on>`) | Claude tidies the board: merges duplicates, deletes what is settled elsewhere and shortens wording and cuts weak mechanics, the agents' plain bullets included, without touching your locked bullets, accepted cards, struck-through entries, pictures, the ruled-out list or the chat. The Brief, the Brainstorm and the Flowchart are measured separately: it works on the ones over 80,000 characters, and removes the pieces elsewhere of the ideas it cuts there. When none is over, it asks before pruning the whole board. A version is saved first, and the pass is one undo (History → Undo this reply). It also runs on its own between rounds for any section over 80,000 characters (once pruned, a section waits until it has grown 10,000 past what the pass left). Needs the `claude` command. |
 | `/audit` (or `/audit <what to check>`) | The Foreman reads the whole board and posts a short report in the chat of any problems or inconsistencies, one line each. It can fix what it finds (see Final audit below). Refused while a run is going (the run ends with an audit). Stop it with `/stop`. |
-| `/pitch` (or `/pitch 20`, `/pitch 10 <guidance>`) | One agent adds twist pitches (5 unless you give a number, up to 50) to the Pitches group, each `toy : where it lives`, spread across where a twist can come from: a person, a machine, chance the player can see, the setting, or the player's own action. It only adds entries. The first card that can answer pitches, else Claude through the `claude` command. Refused while a run or an audit is going. Its instructions are the "Pitch" text under **Edit roles… → Prompts**. |
+| `/pitch 20`, `/pitch 5 Raccoon Skills`, or `/pitch` | One agent adds twist pitches (5 unless you give a number, up to 50) to a group named for what you asked (Pitches if you gave no name), each `toy : where it lives`, spread across where a twist can come from: a person, a machine, chance the player can see, the setting, or the player's own action. It only adds entries; `/pitch` on its own reruns the last pitch. The first card that can answer pitches, else Claude through the `claude` command. Refused while a run or an audit is going. Its instructions are the "Pitch" text under **Edit roles… → Prompts**. |
 | `/design_wiki` | Opens the design wiki in a new tab: the game design reference every agent reads (see Design wiki below). Nothing is sent. |
 | `//hello` | Sends `/hello` as plain text. |
 
@@ -247,7 +248,7 @@ the chat, and so on).
 **Pictures.** A role has a **Can make pictures** checkbox in the role editor
 (for example a "Concept Art" role). Connections with such a role get a
 `generate_image` tool that draws with the **Image model** set in **⋯ →
-Settings…** (a new board uses `openai/gpt-5.4-image-2`; routers such as
+Settings…** (a new board uses `openai/gpt-image-2.6-flare`; routers such as
 `openrouter/auto` aren't offered). If the image service refuses, the error
 says which provider and what it said. The picture lands on the Brainstorm canvas marked "<name> added"
 (Keep / Dismiss). It is limited to 2 pictures per turn, and each one is paid
