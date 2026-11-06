@@ -129,7 +129,7 @@ test('addColabSpend and setColabSpent ignore a cost that is not a finite, non-ne
 test("while pruning, the pass's ops are guarded and keep credit; the user's are not", () => {
   const dir = tmpDir();
   const store = new BoardStore(path.join(dir, 'board.json'));
-  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }] }, 'user');
   const { section } = store.apply({ type: 'addSection', title: 'S', text: 'one' }, 'user');
   const entry = object.entries[0];
   store.apply({ type: 'ruleOut', target: { kind: 'entry', groupId: object.id, entryId: entry.id }, reason: 'no' }, 'user');
@@ -170,7 +170,7 @@ test('a pass is one undo step', () => {
 test('after endPrune nothing is guarded', () => {
   const dir = tmpDir();
   const store = new BoardStore(path.join(dir, 'board.json'));
-  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }] }, 'user');
   store.beginPrune();
   store.endPrune();
   assert.equal(store.pruning, false);
@@ -181,7 +181,7 @@ test('after endPrune nothing is guarded', () => {
 test("an untagged Claude op during a pass is not the pass's: no guard, no kept credit", () => {
   const dir = tmpDir();
   const store = new BoardStore(path.join(dir, 'board.json'));
-  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }] }, 'user');
   store.beginPrune('tok');
   store.apply({ type: 'updateEntry', groupId: object.id, entryId: object.entries[0].id, label: 'x' }, 'claude');
   const group = store.board.brainstorm.pages[0].objects[0];
@@ -235,4 +235,30 @@ test('setColabRequest saves the request and tells the page, with no history', ()
   assert.equal(new BoardStore(file).board.colab.request.id, 'r_1');
   store.setColabRequest(null);
   assert.equal(store.board.colab.request, null);
+});
+
+test('the store refuses an AI edit to a locked entry and leaves the board unchanged', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const group = store.apply({ type: 'addObject', kind: 'group', title: 'Pitches', x: 0, y: 0, entries: [{ label: 'Fact' }] }, 'user').object;
+  const entryId = group.entries[0].id;
+  const version = store.board.version;
+  assert.throws(() => store.apply({ type: 'updateEntry', groupId: group.id, entryId, text: 'x' }, 'claude'), (e) => e instanceof OpError && /locked/.test(e.message));
+  assert.equal(store.board.brainstorm.pages[0].objects[0].entries[0].text, '');
+  assert.equal(store.board.version, version);
+  store.apply({ type: 'updateEntry', groupId: group.id, entryId, text: 'host edit' }, 'user');
+  assert.equal(store.board.brainstorm.pages[0].objects[0].entries[0].text, 'host edit');
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('the lock holds during a prune pass too', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const group = store.apply({ type: 'addObject', kind: 'group', title: 'Pitches', x: 0, y: 0, entries: [{ label: 'Fact' }] }, 'user').object;
+  const token = store.beginPrune();
+  assert.throws(() => store.apply({ type: 'deleteEntry', groupId: group.id, entryId: group.entries[0].id }, 'claude', { prune: token }), /locked/);
+  store.endPrune();
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
 });

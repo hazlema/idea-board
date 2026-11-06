@@ -126,12 +126,12 @@ test('keepCredit keeps authors and unmarks what the pass made', () => {
 function prunerStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
-  store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }, { label: 'Box', check: 'open' }] }, 'user');
+  store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }, { label: 'Box', check: 'open' }] }, 'user');
   return { store, dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 const lastChat = (store) => store.board.chat.at(-1);
 // Makes the brainstorm about 85,000 characters, over its limit; returns the big group.
-const growBrainstorm = (store) => store.apply({ type: 'addObject', kind: 'group', title: 'Big', x: 900, y: 0, entries: Array.from({ length: 5 }, (_, i) => ({ label: `Long ${i}`, text: 'w'.repeat(17_000) })) }, 'user').object;
+const growBrainstorm = (store) => store.apply({ type: 'addObject', kind: 'group', title: 'Big', x: 900, y: 0, entries: Array.from({ length: 5 }, (_, i) => ({ label: `Long ${i}`, text: 'w'.repeat(17_000), check: 'open' })) }, 'user').object;
 // An agent whose pass starts, runs `during` and reports `text`; it keeps the prompt it was given.
 const passAgent = ({ text = 'Kept: A.', during = () => {} } = {}) => {
   const agent = {

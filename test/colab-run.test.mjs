@@ -1086,7 +1086,7 @@ test('a pass asked for in a run that ends early runs after it; after Stop it is 
   assert.equal(pruner.calls.length, 2);
 });
 
-test("an idle /prune waits for Claude's chat run in flight; its edit to a plain bullet goes through", async () => {
+test("an idle /prune waits for Claude's chat run in flight; its edit goes through", async () => {
   const chat = gate();
   const order = [];
   const claude = {
@@ -1103,7 +1103,7 @@ test("an idle /prune waits for Claude's chat run in flight; its edit to a plain 
   };
   const { store, run } = setup({ agents: [A], claude, sizesOf: () => SMALL, complete: () => text('x') });
   run.pruner = new Pruner({ store, agent: claude });
-  const group = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }] }, 'user').object;
+  const group = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }] }, 'user').object;
   claude.running = true;
   claude.current = chat.promise.then(() => {
     store.apply({ type: 'updateEntry', groupId: group.id, entryId: group.entries[0].id, label: 'Chat edit' }, 'claude');

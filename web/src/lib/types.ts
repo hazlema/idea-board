@@ -45,6 +45,8 @@ export interface Entry {
   label: string;
   text: string;
   check: Check;
+  /** The host made it a plain bullet: no agent may change it. */
+  locked?: boolean;
   ruledOut: boolean;
   author: Author;
   claudeAdded: boolean;

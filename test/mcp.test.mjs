@@ -55,7 +55,7 @@ test('view_board shows memory first and brainstorm content', () => withServer(as
   const [g] = view.brainstorm.groups;
   assert.deepEqual(Object.keys(g), ['id', 'title', 'color', 'claude_added', 'x', 'y', 'w', 'h', 'entries', 'ruled_out_entries']);
   assert.deepEqual(g.entries.map((e) => e.label), ['Staves']);
-  assert.deepEqual(Object.keys(g.entries[0]), ['id', 'label', 'text', 'check', 'claude_added']);
+  assert.deepEqual(Object.keys(g.entries[0]), ['id', 'label', 'text', 'check', 'locked', 'claude_added']);
   assert.equal(g.entries[0].check, 'done');
   assert.deepEqual(g.ruled_out_entries, [{ id: fireballs.id, label: 'Fireballs' }]);
   assert.equal(view.brainstorm.notes[0].text, 'a note');
@@ -386,6 +386,16 @@ test('batch stops at the first error and says what ran', () => withServer(async 
   assert.match((await call('batch', { calls: [] })).error, /non-empty/);
 }));
 
+test('batch reports the lock when a call touches a locked entry', () => withServer(async ({ call, userOp }) => {
+  const { object } = await (await userOp({ type: 'addObject', kind: 'group', title: 'Pitches', x: 0, y: 0, entries: [{ label: 'Fact' }] })).json();
+  const result = await call('batch', { calls: [
+    { tool: 'add_note', args: { text: 'kept' } },
+    { tool: 'update_entry', args: { entry_id: object.entries[0].id, label: 'changed' } },
+  ] });
+  assert.equal(result.failed.index, 1);
+  assert.match(result.failed.error, /"Fact" is locked/);
+}));
+
 test('wait_for_chat reports what the user changed on the board since Claude last looked', () => withServer(async ({ call, userOp }) => {
   const group = await call('add_group', { title: 'Attacks', entries: [{ label: 'Life Drain' }] });
   await call('view_board', {});
@@ -572,13 +582,13 @@ test("Claude's spent is announced after generate_image, and a wait_for_chat retu
   assert.equal((await call('generate_image', { prompt: 'c' })).error, undefined);
 }, { pictures: withPictures }));
 
-// A board with a plain bullet, a box and an earlier Claude reply (a plain bullet and a
+// A board with a host entry (boxed, so the host's lock stays out of these law tests), a box and an earlier Claude reply (a plain bullet and a
 // ruled-out record), and a version from before all of it.
 function lawBoard() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'idea-board-'));
   const store = new BoardStore(path.join(dir, 'board.json'));
   const version = store.saveVersion('empty', 'user');
-  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain law' }, { label: 'Box', check: 'open' }] }, 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain law', check: 'open' }, { label: 'Box', check: 'open' }] }, 'user');
   store.apply({ type: 'addEntry', groupId: object.id, label: 'Agent fact' }, 'claude');
   store.apply({ type: 'ruleOut', target: { kind: 'idea' }, text: 'no lasers', reason: 'r' }, 'claude');
   const turn = store.historyLog.entries().at(-1).turn;
@@ -665,7 +675,7 @@ test('a host message sent during a pass is handed to the waiting session once th
 }));
 
 test('/mcp?prune=<token> is the pass: guarded, tagged and without its denied tools; plain /mcp is held', () => withServer(async ({ base, call, store }) => {
-  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain' }, { label: 'Box', check: 'open' }] }, 'user');
+  const { object } = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0, entries: [{ label: 'Plain', check: 'open' }, { label: 'Box', check: 'open' }] }, 'user');
   const token = store.beginPrune();
   const pruneRpc = async (method, params, t = token) => {
     const res = await fetch(`${base}/mcp?prune=${t}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
