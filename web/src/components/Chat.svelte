@@ -19,7 +19,7 @@
 
   const MAX_LABEL = 200;
   const PLACEHOLDER = 'Message everyone, or /chat N to ask one… (Enter to send, Shift+Enter for a new line)';
-  const COMMANDS_HINT = '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · /design_wiki · Shift+↑ for earlier messages';
+  const COMMANDS_HINT = '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · /pitch · /design_wiki · Shift+↑ for earlier messages';
 
   // Chat would change the live board, so it waits while an old version is being looked at.
   const previewing = $derived(preview.current !== null);

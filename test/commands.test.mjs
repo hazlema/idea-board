@@ -23,8 +23,8 @@ test('plain text and parsed commands', () => {
 
 test('bad commands give the exact error copy', () => {
   const cases = [
-    ['/home/x', 'Unknown command /home/x. Commands: /chat N (or /c N), /r, /start, /stop, /prune, /audit, /design_wiki. Start with // to send a message that begins with /.'],
-    ['/chat2 hi', 'Unknown command /chat2. Commands: /chat N (or /c N), /r, /start, /stop, /prune, /audit, /design_wiki. Start with // to send a message that begins with /.'],
+    ['/home/x', 'Unknown command /home/x. Commands: /chat N (or /c N), /r, /start, /stop, /prune, /audit, /pitch, /design_wiki. Start with // to send a message that begins with /.'],
+    ['/chat2 hi', 'Unknown command /chat2. Commands: /chat N (or /c N), /r, /start, /stop, /prune, /audit, /pitch, /design_wiki. Start with // to send a message that begins with /.'],
     ['/chat x hi', CHAT_USAGE],
     ['/chat 2', 'Add a message after /chat N.'],
     ['/start', 'Add a kickoff message after /start.'],
@@ -37,7 +37,7 @@ test('bad commands give the exact error copy', () => {
 });
 
 test('COMMANDS_HINT names the commands', () => {
-  assert.equal(COMMANDS_HINT, '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · /design_wiki');
+  assert.equal(COMMANDS_HINT, '/chat N (or /c N) · /r · /start · /stop · /prune · /audit · /pitch · /design_wiki');
 });
 
 test('/prune takes optional guidance', () => {
@@ -53,4 +53,15 @@ test('/design_wiki takes no message', () => {
 test('/audit takes optional focus text', () => {
   assert.deepEqual(parseCommand('/audit the rules'), { kind: 'audit', text: 'the rules' });
   assert.deepEqual(parseCommand('/audit'), { kind: 'audit', text: '' });
+});
+
+test('/pitch takes an optional count and guidance', () => {
+  assert.deepEqual(parseCommand('/pitch'), { kind: 'pitch', count: 5, text: '' });
+  assert.deepEqual(parseCommand('/pitch 20'), { kind: 'pitch', count: 20, text: '' });
+  assert.deepEqual(parseCommand('/pitch 10 more like the heckler'), { kind: 'pitch', count: 10, text: 'more like the heckler' });
+  assert.deepEqual(parseCommand('/pitch more like the heckler'), { kind: 'pitch', count: 5, text: 'more like the heckler' });
+});
+
+test('/pitch refuses a count out of range', () => {
+  for (const t of ['/pitch 0', '/pitch 51']) assert.deepEqual(parseCommand(t), { kind: 'error', error: 'Ask for 1 to 50 pitches: /pitch 20' }, t);
 });

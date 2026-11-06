@@ -25,11 +25,12 @@ function setup({ via = 'binary', cards = [A, B], state = 'idle', pruning = false
   const nudges = [];
   const agent = { via: () => via, nudge: () => nudges.push(1), found: via === 'binary', role: () => '' };
   const presence = { role: () => '', attached: () => via === 'mcp' };
-  const calls = { audit: [], prune: [], answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
+  const calls = { audit: [], pitch: [], prune: [], answer: [], start: [], stop: 0, ensureRoster: 0, budgetChanged: 0, recover: 0 };
   const colab = {
     status: { state, pruning },
     audit: (o) => { calls.audit.push(o); return calls.auditResult ?? { ok: true, by: 'Claude' }; },
     prune: (o) => { calls.prune.push(o); return calls.pruneResult ?? { ok: true }; },
+    pitch: (o) => { calls.pitch.push(o); return calls.pitchResult ?? { ok: true, by: 'Claude' }; },
     ensureRoster: () => { calls.ensureRoster += 1; },
     canAnswer: (id) => (cards.some((c) => agentId(c.model, c.roleId) === id) ? { ok: true } : { ok: false, why: 'no-model' }),
     answer: (id) => calls.answer.push(id),
@@ -290,6 +291,26 @@ test('a refused /audit throws an OpError and posts nothing', () => {
   const a = setup();
   a.calls.auditResult = { error: 'Nobody can audit right now.' };
   assert.throws(() => a.room.userChat({ text: '/audit' }), (e) => e instanceof OpError && /Nobody can audit/.test(e.message));
+  assert.equal(a.store.board.chat.length, 0);
+});
+
+test('/pitch starts a pass and posts the request, owing nothing', () => {
+  const a = setup();
+  a.room.userChat({ text: '/pitch 20 funnier' });
+  assert.deepEqual(a.calls.pitch, [{ count: 20, guidance: 'funnier' }]);
+  assert.equal(a.store.board.chat.at(-1).text, 'Pitch 20 twists: funnier');
+  assert.equal(a.store.board.chat.at(-1).role, 'user');
+  assert.deepEqual(a.store.board.chat.at(-1).owed, []);
+  const b = setup();
+  b.room.userChat({ text: '/pitch' });
+  assert.deepEqual(b.calls.pitch, [{ count: 5, guidance: '' }]);
+  assert.equal(b.store.board.chat.at(-1).text, 'Pitch 5 twists.');
+});
+
+test('a refused /pitch throws an OpError and posts nothing', () => {
+  const a = setup();
+  a.calls.pitchResult = { error: 'Wait for the run to end, then /pitch.' };
+  assert.throws(() => a.room.userChat({ text: '/pitch' }), (e) => e instanceof OpError && /Wait for the run to end/.test(e.message));
   assert.equal(a.store.board.chat.length, 0);
 });
 
