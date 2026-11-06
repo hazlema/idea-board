@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyOp, emptyBoard, OpError } from '../lib/board.mjs';
-import { lockGuard } from '../lib/locks.mjs';
+import { lockGuard, restoreGuard } from '../lib/locks.mjs';
 
 function sample() {
   const b = emptyBoard('Locks');
@@ -45,6 +45,7 @@ test('lockGuard refuses every AI op that touches a locked entry', () => {
     { type: 'deleteEntry', ...at },
     { type: 'moveEntry', entryId: fact.id, toGroupId: other.id },
     { type: 'ruleOut', target: { kind: 'entry', ...at }, reason: 'no' },
+    { type: 'ruleOut', target: { kind: 'object', id: group.id }, reason: 'cut' },
     { type: 'deleteObject', id: group.id },
   ]) assert.throws(() => lockGuard(b, op), (e) => e instanceof OpError && /locked/.test(e.message) && e.message.includes('Fact'), JSON.stringify(op));
 });
@@ -58,4 +59,21 @@ test('lockGuard allows ops on unlocked entries and adding entries to a group wit
     { type: 'deleteObject', id: other.id },
     { type: 'updateEntry', groupId: group.id, entryId: 'en_nope', text: 'x' },
   ]) assert.doesNotThrow(() => lockGuard(b, op), JSON.stringify(op));
+});
+
+test('restoreGuard refuses a version that would drop or change a locked entry', () => {
+  const { b, group, fact } = sample();
+  const before = structuredClone(b);
+  applyOp(before, { type: 'deleteEntry', groupId: group.id, entryId: fact.id }, 'user');
+  assert.throws(() => restoreGuard(b, before), (e) => e instanceof OpError && /"Fact" is locked/.test(e.message));
+  const edited = structuredClone(b);
+  edited.brainstorm.pages[0].objects[0].entries[0].text = 'other';
+  assert.throws(() => restoreGuard(b, edited), /"Fact" is locked/);
+});
+
+test('restoreGuard allows a version that keeps every locked entry as it is', () => {
+  const { b, group, box } = sample();
+  const later = structuredClone(b);
+  applyOp(later, { type: 'updateEntry', groupId: group.id, entryId: box.id, text: 'changed' }, 'user');
+  assert.doesNotThrow(() => restoreGuard(b, later));
 });

@@ -262,3 +262,18 @@ test('the lock holds during a prune pass too', () => {
   store.historyLog.flush();
   fs.rmSync(dir, { recursive: true });
 });
+
+test('an AI author cannot restore a version that would undo a locked entry; the host can', () => {
+  const dir = tmpDir();
+  const store = new BoardStore(path.join(dir, 'board.json'));
+  const empty = store.saveVersion('empty', 'user');
+  store.apply({ type: 'addObject', kind: 'group', title: 'Pitches', x: 0, y: 0, entries: [{ label: 'Fact' }] }, 'user');
+  const versions = store.versions.list().length;
+  assert.throws(() => store.restoreVersion(empty.id, 'claude'), (e) => e instanceof OpError && /"Fact" is locked/.test(e.message));
+  assert.equal(store.board.brainstorm.pages[0].objects.length, 1);
+  assert.equal(store.versions.list().length, versions);
+  store.restoreVersion(empty.id, 'user');
+  assert.equal(store.board.brainstorm.pages[0].objects.length, 0);
+  store.historyLog.flush();
+  fs.rmSync(dir, { recursive: true });
+});

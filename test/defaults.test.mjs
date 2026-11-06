@@ -99,3 +99,9 @@ test('the turn text holds for an agent whose messages carry no board', () => {
   assert.doesNotMatch(turn, /You already have it/);
   assert.match(turn, /If the board isn't in your messages, read it/);
 });
+
+test('the prune and audit texts tell the agent locked entries are off limits', () => {
+  const { prune, audit } = defaults().prompts;
+  assert.match(prune, /Law \(the server refuses these, so don't try\): locked entries and any group holding one,/);
+  assert.match(audit, /Entries marked locked are the host's decisions/);
+});
