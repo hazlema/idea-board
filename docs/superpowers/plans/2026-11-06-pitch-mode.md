@@ -21,10 +21,11 @@
 - `/pitch` only adds pitches; it never edits or removes entries.
 - Placement kinds (verbatim, in the `pitch` prompt): a person in the game; a machine in the setting; chance the player can see; the setting itself; the player's own action.
 - No random seeds anywhere.
+- Every commit message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 
-- An agent `batch` that mixes allowed ops with one touching a locked entry: the whole batch should stop at the refused op, with the refusal message naming the entry (batch already applies call by call; Task 1 tests a batch).
+- An agent `batch` that mixes allowed ops with one touching a locked entry: the refused call reports the lock message naming the entry (batch applies call by call through `store.apply`; Task 1 adds a test in `test/mcp.test.mjs` running `batch` with an `update_entry` on a locked entry and asserting that call's error matches /locked/).
 - The host unlocking by adding a checkbox back: the entry becomes editable by agents again (Task 1 test).
 - An agent setting `check: 'none'` on its own entry must not lock it, and an agent cannot "re-lock" or unlock a host entry (Task 1 tests).
 - `/pitch` while a run is going or an audit is going: refused with a clear message, nothing posted (Task 2 and Task 3 tests).
@@ -41,7 +42,7 @@
 - Modify: `lib/mcp-tools.mjs:72` (entries in `brainstormView` show `locked`)
 - Modify: `defaults.json` (`shared`: one rule line)
 - Modify: `web/src/lib/types.ts` (`Entry` gets `locked?: boolean`)
-- Test: `test/locks.test.mjs` (new), `test/store.test.mjs`
+- Test: `test/locks.test.mjs` (new), `test/store.test.mjs`, `test/mcp.test.mjs` (the batch case from Review Focus)
 
 **Interfaces:**
 - Produces: entry field `locked: boolean` (present on new entries). `lockGuard(board, op): void` in `lib/locks.mjs`, throws `OpError`. `BoardStore.apply` calls it for every op whose author `isAi(author)`.
