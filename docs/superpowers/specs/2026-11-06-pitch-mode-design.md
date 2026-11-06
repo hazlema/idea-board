@@ -29,12 +29,14 @@ A group titled **Pitches** on the Brainstorm tab. Each pitch is one entry, label
 - The pitch prompt tells the agent to think first of the most obvious twists for this game and not pitch them, and to say for each pitch what the twist is and where it reaches the player.
 - `/pitch` can be run any time, as often as the host likes. It adds pitches and never edits or removes existing ones.
 
-### 3. Locking
+### 3. Locking: the host removes the checkbox
 
-- The host locks the pitches he wants to keep. Locking is host-only and enforced by the server: an AI author cannot lock or unlock an entry, and cannot update, delete, move or rule out a locked one, and cannot delete a group holding one.
-- Lock is a new flag on entries, not the existing tick: agents tick entries freely today, so a tick can't mean locked. It works on any entry; pitches are the use the host has in mind.
-- Locked pitches are part of the design. The turn, prune and audit prompts say so: build on locked entries, never edit them away.
-- Unlocked pitches are ordinary entries. The host can delete the ones he doesn't want; prompts tell agents that unlocked pitches are not part of the design.
+- The host already marks an entry as settled by removing its checkbox (`check: 'none'`). That gesture becomes the lock. Nothing changes in the UI.
+- When the **host** removes an entry's checkbox, the server records that the host did it. From then on, no AI author can update, delete, move or rule out that entry, or delete a group holding it, until the host gives it a checkbox again.
+- Entries that an agent created without a checkbox, or whose checkbox an agent removed, are not locked and stay editable as today. (`none` is the default check for new entries, so "no checkbox" alone can't mean locked.)
+- The guard applies on every agent op, at all times, not only during a prune.
+- History: a guard like this existed in `lib/prune.mjs` ("plain bullets are law during a prune") and was removed in `8a4b2a0` so prune could cut bullets. It applied only during a prune and protected every bullet, the agents' own included. The new guard closes both gaps.
+- Locked pitches are part of the design. The turn, prune and audit prompts say so: build on locked entries, never edit them away. Unlocked pitches are ordinary entries; the host can delete the ones he doesn't want.
 
 ## The flow Frosty will test
 
@@ -63,11 +65,11 @@ One agent, the raccoon story. `/start` with the story builds the Brief and Flowc
 
 - `/pitch` follows the existing command path (`lib/commands.mjs` → `lib/room.mjs`) and runs as a one-off pass, like `/prune` and `/audit`.
 - New prompt text and the placement kinds live in `defaults.json`, validated by `lib/defaults.mjs` (an unknown key is fatal, so new keys must be registered).
-- The lock guard sits in the server's op path for all AI authors at all times, not only inside a prune pass as `lib/prune.mjs`'s guard does today.
+- The lock guard sits in the server's op path for all AI authors at all times, not only inside a prune pass as `lib/prune.mjs`'s guard does today. Existing boards have no record of who removed a checkbox, so nothing on them starts out locked.
 
 ## Left to the builder
 
 - Which agent runs `/pitch` (the way audit picks its auditor is a good model).
 - Whether `/pitch` is refused or queued while a run is going.
-- The lock control in the entry UI, and how a locked entry looks.
+- Whether a locked entry looks any different from an agent's plain bullet.
 - Exact prompt wording, within the rules above.
