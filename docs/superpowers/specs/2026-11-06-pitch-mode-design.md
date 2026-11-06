@@ -33,7 +33,8 @@ A group titled **Pitches** on the Brainstorm tab. Each pitch is one entry, label
 
 - The host already marks an entry as settled by removing its checkbox (`check: 'none'`). That gesture becomes the lock. Nothing changes in the UI.
 - When the **host** removes an entry's checkbox, the server records that the host did it. From then on, no AI author can update, delete, move or rule out that entry, or delete a group holding it, until the host gives it a checkbox again.
-- Entries that an agent created without a checkbox, or whose checkbox an agent removed, are not locked and stay editable as today. (`none` is the default check for new entries, so "no checkbox" alone can't mean locked.)
+- An entry the **host** adds without a checkbox is locked the same way, so the host's own pitches are protected (the board adds entries without a checkbox by default, so this covers what the host types).
+- Entries that an agent created without a checkbox, or whose checkbox an agent removed, are not locked and stay editable as today. (`none` is also the agents' default, so "no checkbox" alone can't mean locked.)
 - The guard applies on every agent op, at all times, not only during a prune.
 - History: a guard like this existed in `lib/prune.mjs` ("plain bullets are law during a prune") and was removed in `8a4b2a0` so prune could cut bullets. It applied only during a prune and protected every bullet, the agents' own included. The new guard closes both gaps.
 - Locked pitches are part of the design. The turn, prune and audit prompts say so: build on locked entries, never edit them away. Unlocked pitches are ordinary entries; the host can delete the ones he doesn't want.
