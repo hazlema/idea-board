@@ -23,6 +23,7 @@ import { ColabRun } from './lib/colab/run.mjs';
 import { Pruner } from './lib/prune.mjs';
 import { Room } from './lib/room.mjs';
 import { wikiPage } from './lib/wiki.mjs';
+import { designDocPage } from './lib/export.mjs';
 
 const HOST = '127.0.0.1';
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -93,6 +94,29 @@ function sendJson(res, status, value) {
   res.writeHead(status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(value));
 }
+
+// A stored picture. The name is checked before the disk is touched, so
+// nothing but a stored picture can ever be served this way.
+function sendAsset(res, store, name) {
+  if (!ASSET_NAME.test(name)) return sendJson(res, 400, { error: 'not a picture file name' });
+  let bytes;
+  try { bytes = store.assets.read(name); }
+  catch (error) {
+    if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not found' });
+    throw error;
+  }
+  res.writeHead(200, {
+    'content-type': ASSET_TYPES[name.slice(name.lastIndexOf('.') + 1)],
+    'cache-control': 'public, max-age=31536000, immutable',
+    'x-content-type-options': 'nosniff',
+    'content-length': bytes.length,
+  });
+  return res.end(bytes);
+}
+
+const decoded = (part) => {
+  try { return decodeURIComponent(part); } catch { return null; }
+};
 
 // The /api/colab routes. Returns false for a path it does not own.
 async function colabRoute(run, room, pathname, req, res) {
@@ -244,16 +268,27 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
       }
 
       if (url.pathname === '/api/export' && req.method === 'POST') return sendJson(res, 200, { path: store.exportDesignDoc() });
-      // The last exported design doc, as plain text, so the export toast can link to it.
-      if (url.pathname === '/api/export' && req.method === 'GET') {
-        let bytes;
-        try { bytes = fs.readFileSync(store.paths.design); }
+      // The last exported design doc as a page to read; the export toast links here.
+      if ((url.pathname === '/export' || url.pathname === '/export/') && req.method === 'GET') {
+        let markdown;
+        try { markdown = fs.readFileSync(store.paths.design, 'utf8'); }
         catch (error) {
           if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not exported yet' });
           throw error;
         }
-        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache', 'content-length': bytes.length });
-        return res.end(bytes);
+        const html = Buffer.from(designDocPage(markdown));
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-security-policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+          'cache-control': 'no-cache',
+          'content-length': html.length,
+        });
+        return res.end(html);
+      }
+      // Its pictures, at the path the doc gives them: the assets folder beside it.
+      const exportPicture = /^\/export\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+      if (exportPicture && req.method === 'GET' && decoded(exportPicture[1]) === path.basename(store.paths.assets)) {
+        return sendAsset(res, store, exportPicture[2]);
       }
 
       if (url.pathname === '/api/assets' && req.method === 'POST') {
@@ -324,23 +359,7 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
       }
 
       if (url.pathname.startsWith('/assets/') && req.method === 'GET') {
-        // The name is checked before the disk is touched, so nothing but a
-        // stored picture can ever be served from here.
-        const name = url.pathname.slice('/assets/'.length);
-        if (!ASSET_NAME.test(name)) return sendJson(res, 400, { error: 'not a picture file name' });
-        let bytes;
-        try { bytes = store.assets.read(name); }
-        catch (error) {
-          if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not found' });
-          throw error;
-        }
-        res.writeHead(200, {
-          'content-type': ASSET_TYPES[name.slice(name.lastIndexOf('.') + 1)],
-          'cache-control': 'public, max-age=31536000, immutable',
-          'x-content-type-options': 'nosniff',
-          'content-length': bytes.length,
-        });
-        return res.end(bytes);
+        return sendAsset(res, store, url.pathname.slice('/assets/'.length));
       }
 
       if (req.method === 'GET') {

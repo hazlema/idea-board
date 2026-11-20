@@ -164,12 +164,29 @@ test('export endpoint writes the design doc and returns its path', () => withSer
   const { path: file } = await res.json();
   assert.equal(file, store.paths.design);
   assert.match(fs.readFileSync(file, 'utf8'), /> exported note/);
-  const got = await fetch(`${base}/api/export`);
-  assert.equal(got.status, 200);
-  assert.match(got.headers.get('content-type'), /^text\/plain/);
-  assert.match(await got.text(), /> exported note/);
   const blocked = await fetch(`${base}/api/export`, { method: 'POST', headers: { origin: 'http://evil.example' } });
   assert.equal(blocked.status, 403);
+}));
+
+test('/export shows the exported doc as a page, with its pictures at the paths it gives', () => withServer(async ({ base, userOp, store }) => {
+  assert.equal((await fetch(`${base}/export`)).status, 404);
+  const up = await fetch(`${base}/api/assets`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: PNG });
+  const { asset } = await up.json();
+  await userOp({ type: 'addObject', kind: 'note', text: 'exported <b>note</b>' });
+  await userOp({ type: 'addObject', kind: 'picture', asset, caption: 'Map' });
+  await fetch(`${base}/api/export`, { method: 'POST' });
+  const page = await fetch(`${base}/export`);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type'), /^text\/html/);
+  assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
+  const html = await page.text();
+  assert.match(html, /exported &lt;b>note/);
+  const src = /<img src="([^"]+)"/.exec(html)[1];
+  assert.equal(src, `${encodeURI(path.basename(store.paths.assets))}/${asset}`);
+  const picture = await fetch(new URL(src, `${base}/export/`));
+  assert.equal(picture.status, 200);
+  assert.equal(picture.headers.get('content-type'), 'image/png');
+  assert.equal((await fetch(`${base}/export/elsewhere/${asset}`)).status, 404);
 }));
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
