@@ -13,7 +13,7 @@ test('constants match the shared board shape', () => {
   assert.deepEqual(KINDS, ['group', 'note', 'picture', 'topic']);
   assert.deepEqual(COLORS, ['slate', 'violet', 'green', 'amber', 'rose', 'sky']);
   assert.deepEqual(CHECKS, ['none', 'open', 'done']);
-  assert.deepEqual(DEFAULT_SIZE.note, { w: 220, h: 140 });
+  assert.deepEqual(DEFAULT_SIZE.note, { w: 440, h: 140 });
 });
 
 test('a Claude-added group is marked; its starting entries are not', () => {
@@ -24,7 +24,7 @@ test('a Claude-added group is marked; its starting entries are not', () => {
   assert.equal(g.entries[0].claudeAdded, false);
   assert.equal(g.entries[0].check, 'done');
   assert.equal(g.entries[0].ruledOut, false);
-  assert.equal(g.w, 320);
+  assert.equal(g.w, 640);
   assert.equal(g.color, 'slate');
   assert.equal(page(b).objects.length, 1);
   assert.ok(changed.includes(g.id));
@@ -34,7 +34,7 @@ test('a Claude-added group is marked; its starting entries are not', () => {
 test('objects of every kind get their own fields and timestamps', () => {
   const b = emptyBoard();
   const n = add(b, { kind: 'note', text: ' idea ', color: 'rose', x: 1, y: 2 });
-  assert.deepEqual([n.text, n.color, n.w, n.h, n.x, n.y], ['idea', 'rose', 220, 140, 1, 2]);
+  assert.deepEqual([n.text, n.color, n.w, n.h, n.x, n.y], ['idea', 'rose', 440, 140, 1, 2]);
   assert.ok(n.createdAt && n.updatedAt);
   assert.equal(n.updatedBy, 'user');
   const p = add(b, { kind: 'picture', asset: A, caption: 'map', preview: B });
@@ -146,16 +146,40 @@ test('placeObject puts new things beside their neighbour without overlap', () =>
   const g = applyOp(b, { type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0 }, 'user').object;
   const n1 = applyOp(b, { type: 'addObject', kind: 'note', text: 'one', near: g.id }, 'claude').object;
   const n2 = applyOp(b, { type: 'addObject', kind: 'note', text: 'two', near: g.id }, 'claude').object;
-  assert.equal(n1.x, 380);
-  assert.equal(n1.x, n2.x);
-  assert.ok(n2.y >= n1.y + 140);
+  assert.equal(n1.x, 640 + 60);
+  assert.equal(n1.y, 0);
+  const clear = (a, c) => a.x + a.w + 40 <= c.x || c.x + c.w + 40 <= a.x || a.y + a.h + 40 <= c.y || c.y + c.h + 40 <= a.y;
+  assert.ok(clear(n1, n2));
 });
 
-test('placeObject with nothing nearby goes to the origin, then right of everything', () => {
+test('placeObject goes to the origin first, then beside the last thing added', () => {
   const b = emptyBoard();
-  assert.deepEqual(placeObject(page(b), { w: 220, h: 140 }), { x: 0, y: 0 });
+  assert.deepEqual(placeObject(page(b), { w: 440, h: 140 }), { x: 0, y: 0 });
   add(b, { kind: 'note', text: 'a', x: 100, y: 40 });
-  assert.deepEqual(placeObject(page(b), { w: 220, h: 140 }), { x: 100 + 220 + 60, y: 40 });
+  add(b, { kind: 'note', text: 'b', x: 2000, y: 40 });
+  add(b, { kind: 'note', text: 'c', x: 100, y: 600 });
+  assert.deepEqual(placeObject(page(b), { w: 440, h: 140 }), { x: 100 + 440 + 60, y: 600 });
+});
+
+test('a group with many entries counts as tall, so a new thing is not put on its lower half', () => {
+  const b = emptyBoard();
+  const entries = Array.from({ length: 30 }, (_, i) => ({ label: `idea number ${i} with a fair amount of words in it` }));
+  const g = add(b, { kind: 'group', title: 'Tall', entries, x: 0, y: 0 });
+  add(b, { kind: 'note', text: 'right', x: 700, y: 0, w: 2000, h: 100 }); // blocks the spot beside it
+  const n = add(b, { kind: 'note', text: 'new', near: g.id }, 'claude');
+  assert.ok(n.x >= 640 + 40 || n.y >= 30 * 27, `placed at ${n.x},${n.y}, inside the group`);
+});
+
+test("an agent's own spot is moved off what is there; the host's is kept", () => {
+  const b = emptyBoard();
+  add(b, { kind: 'note', text: 'here', x: 0, y: 0 });
+  const mine = add(b, { kind: 'note', text: 'mine', x: 10, y: 10 }, 'user');
+  assert.deepEqual([mine.x, mine.y], [10, 10]);
+  const theirs = add(b, { kind: 'note', text: 'theirs', x: 10, y: 10 }, 'claude');
+  assert.notDeepEqual([theirs.x, theirs.y], [10, 10]);
+  for (const o of [page(b).objects[0], mine]) {
+    assert.ok(theirs.x >= o.x + o.w + 40 || theirs.y >= o.y + o.h + 40 || o.x >= theirs.x + theirs.w + 40 || o.y >= theirs.y + theirs.h + 40);
+  }
 });
 
 test('findObject and objectLabel', () => {

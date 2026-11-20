@@ -77,7 +77,7 @@ test('▤ Group adds "New group" at the middle of the view and focuses its title
   render(BrainstormView);
   await fireEvent.click(screen.getByRole('button', { name: '▤ Group' }));
   // jsdom's canvas is 0×0, so the middle of the default view is world (-80, -80).
-  expect(api.op).toHaveBeenCalledWith({ type: 'addObject', kind: 'group', title: 'New group', x: -240, y: -140 });
+  expect(api.op).toHaveBeenCalledWith({ type: 'addObject', kind: 'group', title: 'New group', x: -400, y: -140 });
 
   live.board = boardWith([group('o_wiz', 'Wizards'), group('o_new', 'New group', { x: -240, y: -140 })]);
   await waitFor(() => expect(screen.getByDisplayValue('New group')).toHaveFocus());

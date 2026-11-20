@@ -25,7 +25,7 @@
   const DEFAULT_VIEW: View = { x: 80, y: 80, k: 1 };
   const MIN: Record<'group' | 'note' | 'picture', Size> = { group: { w: 220, h: 80 }, note: { w: 160, h: 80 }, picture: { w: 120, h: 80 } };
   // Roughly how big a new object is, to place it in the view.
-  const NEW_SIZE: Record<BObject['kind'], Size> = { group: { w: 320, h: 120 }, note: { w: 220, h: 140 }, topic: { w: 130, h: 48 }, picture: { w: 240, h: 220 } };
+  const NEW_SIZE: Record<BObject['kind'], Size> = { group: { w: 640, h: 120 }, note: { w: 440, h: 140 }, topic: { w: 130, h: 48 }, picture: { w: 240, h: 220 } };
   // Stand-in size for links until a box has been measured.
   const UNMEASURED = 160;
   const UNTITLED: Record<BObject['kind'], string> = { group: 'Untitled group', note: 'Note', picture: 'picture', topic: 'Topic' };
