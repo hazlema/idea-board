@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OpError, applyOp, emptyBoard } from '../lib/board.mjs';
-import { findObject, objectLabel, placeObject, DEFAULT_SIZE, KINDS, COLORS, CHECKS } from '../lib/brainstorm.mjs';
+import { findObject, footprints, objectLabel, placeObject, DEFAULT_SIZE, KINDS, COLORS, CHECKS } from '../lib/brainstorm.mjs';
 
 const A = 'a'.repeat(32) + '.png';
 const B = 'b'.repeat(32) + '.jpg';
 const C = '0123456789abcdef'.repeat(2) + '.webp';
 const page = (b) => b.brainstorm.pages[0];
 const add = (b, op, who = 'user') => applyOp(b, { type: 'addObject', ...op }, who).object;
+const footprintBottom = (b, o) => { const r = footprints(b).get(o.id); return r.y + r.h; };
 
 test('constants match the shared board shape', () => {
   assert.deepEqual(KINDS, ['group', 'note', 'picture', 'topic']);
@@ -243,3 +244,19 @@ test('bad brainstorm ops are refused', () => {
   bad({ type: 'keep', id: g.id, entryId: 'nope' });
   assert.equal(g.entries.length, 1);
 });
+
+test('a group that grows pushes what is under it down, keeping its gap, and that pushes what is under it', () => {
+  const b = emptyBoard();
+  const g = add(b, { kind: 'group', title: 'G', x: 0, y: 0 });
+  const h = applyOp(b, { type: 'addObject', kind: 'note', text: 'under', x: 0, y: 0 }, 'user').object;
+  h.y = footprintBottom(b, g) + 20; // 20 below the group
+  const n2 = add(b, { kind: 'note', text: 'under that', x: 100, y: h.y + 140 + 10 });
+  const beside = add(b, { kind: 'note', text: 'beside', x: 700, y: 60 });
+  const far = add(b, { kind: 'note', text: 'far below', x: 0, y: 5000 });
+  for (let i = 0; i < 10; i += 1) applyOp(b, { type: 'addEntry', groupId: g.id, label: `idea ${i}`, text: '' }, 'claude');
+  assert.equal(h.y, footprintBottom(b, g) + 20);
+  assert.equal(n2.y, h.y + 140 + 10);
+  assert.equal(beside.y, 60);
+  assert.equal(far.y, 5000);
+});
+

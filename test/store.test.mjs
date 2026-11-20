@@ -277,3 +277,15 @@ test('an AI author cannot restore a version that would undo a locked entry; the 
   store.historyLog.flush();
   fs.rmSync(dir, { recursive: true });
 });
+
+test('a note pushed down by a growing group goes back up when the growth is undone', () => {
+  const store = new BoardStore(path.join(tmpDir(), 'board.json'));
+  const group = store.apply({ type: 'addObject', kind: 'group', title: 'G', x: 0, y: 0 }, 'user').object;
+  const note = store.apply({ type: 'addObject', kind: 'note', text: 'under', x: 0, y: 200 }, 'user').object;
+  const entries = Array.from({ length: 12 }, (_, i) => ({ label: `idea ${i}` }));
+  for (const entry of entries) store.apply({ type: 'addEntry', groupId: group.id, label: entry.label, text: '' }, 'user');
+  const noteNow = () => store.board.brainstorm.pages[0].objects.find((o) => o.id === note.id);
+  assert.ok(noteNow().y > 200);
+  for (let i = 0; i < entries.length; i += 1) store.undo();
+  assert.equal(noteNow().y, 200);
+});
