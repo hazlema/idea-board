@@ -8,6 +8,7 @@
   import * as api from '$lib/api';
   import { live } from '$lib/live.svelte';
   import type { Author, ChatMessage, Pointer, TurnStats } from '$lib/types';
+  import { markdown, type Span } from '$lib/markdown';
   import { preview } from '../memory/preview.svelte';
 
   interface Props {
@@ -93,21 +94,6 @@
     }
     return run?.claude === 'mcp' ? 'A Claude session is listening' : '';
   });
-
-  // "📎 name" in a message is a file the host attached; it opens in a new tab.
-  const ATTACHED = /📎 ([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/g;
-
-  function parts(text: string): { text: string; file?: string }[] {
-    const out: { text: string; file?: string }[] = [];
-    let last = 0;
-    for (const match of text.matchAll(ATTACHED)) {
-      if (match.index > last) out.push({ text: text.slice(last, match.index) });
-      out.push({ text: match[0], file: match[1] });
-      last = match.index + match[0].length;
-    }
-    if (last < text.length) out.push({ text: text.slice(last) });
-    return out;
-  }
 
   let uploading = $state(false);
 
@@ -201,6 +187,8 @@
   }
 </script>
 
+{#snippet inline(spans: Span[])}{#each spans as span, i (i)}{#if span.file}<a class="text-accent underline" href="/files/{span.file}" target="_blank" rel="noopener">{span.text}</a>{:else if span.href}<a class="text-accent underline" href={span.href} target="_blank" rel="noopener">{span.text}</a>{:else if span.code}<code class="rounded bg-ink px-1 text-[0.9em]">{span.text}</code>{:else}<span class:font-semibold={span.bold} class:italic={span.italic}>{span.text}</span>{/if}{/each}{/snippet}
+
 <!-- Sizes inside are in em, so the text-size slider scales all of it. -->
 <section class="flex min-h-0 flex-1 flex-col" style:font-size="{chatPrefs.fontSize}px" aria-label="Chat with Claude">
   <div class="flex items-center gap-3 border-b border-line px-4 py-1.5 text-[0.8em]">
@@ -240,7 +228,17 @@
         {@const message = item.message}
         <div class="max-w-[80ch] rounded-md px-[0.8em] py-[0.4em] {isAi(message.role) ? 'self-start bg-raised' : 'self-end bg-accent/20'}">
           <div class="text-[0.8em] font-medium" style:color={authorColor(live.board, message.role)}>{authorName(live.board, message.role)}{#if message.to?.length}<span class="ml-1.5 text-muted">→ {message.to.map(targetTag).join(', ')}</span>{/if}{#if message.request}<span class="ml-1.5 text-muted">· {authorName(live.board, message.request.by)}'s request ({message.request.step} of {message.request.of}), approved</span>{/if}{#if message.start}<span class="ml-1.5 text-muted">▶ run started</span>{/if}</div>
-          <div class="break-words whitespace-pre-wrap">{#each parts(message.text) as part, i (i)}{#if part.file}<a class="text-accent underline" href="/files/{part.file}" target="_blank" rel="noopener">{part.text}</a>{:else}{part.text}{/if}{/each}</div>
+          <div class="flex flex-col gap-1.5 break-words">
+            {#each markdown(message.text) as block, i (i)}
+              {#if block.kind === 'p'}<p class="whitespace-pre-wrap">{@render inline(block.spans)}</p>
+              {:else if block.kind === 'quote'}<blockquote class="border-l-2 border-line pl-2 whitespace-pre-wrap text-muted">{@render inline(block.spans)}</blockquote>
+              {:else if block.kind === 'h'}<div class="font-semibold {block.level <= 2 ? 'text-[1.1em]' : ''}">{@render inline(block.spans)}</div>
+              {:else if block.kind === 'ul'}<ul class="list-disc pl-5">{#each block.items as entry, j (j)}<li>{@render inline(entry)}</li>{/each}</ul>
+              {:else if block.kind === 'ol'}<ol class="list-decimal pl-6" start={block.start}>{#each block.items as entry, j (j)}<li>{@render inline(entry)}</li>{/each}</ol>
+              {:else if block.kind === 'code'}<pre class="overflow-x-auto rounded bg-ink px-2 py-1 text-[0.9em]"><code>{block.text}</code></pre>
+              {:else}<hr class="border-line" />{/if}
+            {/each}
+          </div>
           {#if message.stats}
             <div class="mt-1 text-[0.75em] text-muted">{turnLine(message.stats)}</div>
           {/if}
