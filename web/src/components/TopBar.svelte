@@ -59,7 +59,7 @@
   async function exportDoc(): Promise<void> {
     menuOpen = false;
     try {
-      live.toast(`Saved ${await api.exportDoc()}`);
+      live.toast(`Saved ${await api.exportDoc()}`, '/api/export');
     } catch (error) {
       live.toast(messageOf(error));
     }

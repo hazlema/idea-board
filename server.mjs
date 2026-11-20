@@ -244,6 +244,17 @@ export function createServer({ store, agent, presence, colab, room, pictures = n
       }
 
       if (url.pathname === '/api/export' && req.method === 'POST') return sendJson(res, 200, { path: store.exportDesignDoc() });
+      // The last exported design doc, as plain text, so the export toast can link to it.
+      if (url.pathname === '/api/export' && req.method === 'GET') {
+        let bytes;
+        try { bytes = fs.readFileSync(store.paths.design); }
+        catch (error) {
+          if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'not exported yet' });
+          throw error;
+        }
+        res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache', 'content-length': bytes.length });
+        return res.end(bytes);
+      }
 
       if (url.pathname === '/api/assets' && req.method === 'POST') {
         const bytes = await readRawBody(req, MAX_ASSET_BYTES);

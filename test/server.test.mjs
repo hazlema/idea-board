@@ -164,6 +164,10 @@ test('export endpoint writes the design doc and returns its path', () => withSer
   const { path: file } = await res.json();
   assert.equal(file, store.paths.design);
   assert.match(fs.readFileSync(file, 'utf8'), /> exported note/);
+  const got = await fetch(`${base}/api/export`);
+  assert.equal(got.status, 200);
+  assert.match(got.headers.get('content-type'), /^text\/plain/);
+  assert.match(await got.text(), /> exported note/);
   const blocked = await fetch(`${base}/api/export`, { method: 'POST', headers: { origin: 'http://evil.example' } });
   assert.equal(blocked.status, 403);
 }));

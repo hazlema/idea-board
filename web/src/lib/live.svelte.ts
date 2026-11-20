@@ -11,6 +11,8 @@ export interface Notice {
 export interface Toast {
   id: number;
   text: string;
+  /** Opens in a new tab when the toast's text is clicked. */
+  href?: string;
 }
 
 const VIEW_KEY = 'idea-board-tab';
@@ -164,9 +166,9 @@ class Live {
     }
   }
 
-  toast(text: string): void {
+  toast(text: string, href?: string): void {
     const id = ++this.#toastId;
-    this.toasts = [...this.toasts, { id, text }];
+    this.toasts = [...this.toasts, { id, text, href }];
     setTimeout(() => this.dismissToast(id), TOAST_MS);
   }
 
